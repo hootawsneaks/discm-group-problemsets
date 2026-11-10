@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option go_package = "p3/proto";
+
+package upload;
+
+service MediaUpload {
+  rpc UploadVideo(stream VideoChunk) returns (UploadStatus);
+}
+
+message VideoChunk {
+  string filename = 1;
+  int32 producer_id = 2;
+  bytes data = 3;
+}
+
+message UploadStatus {
+  bool accepted = 1;
+  string message = 2;
+}

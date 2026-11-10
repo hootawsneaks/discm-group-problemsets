@@ -1,0 +1,13 @@
+what do i need to know?
+- go syntax
+	- how to read files/
+	- how to spawn threads
+		- how to make a thread pool
+- grpc usage
+- sending bytes
+	- how to open a port
+	- listening to a specific port
+	- some typa format, which apparently grpc will already do data marshalling for me
+- docker 
+- find out if we need a database
+    - ans: apparently not.
