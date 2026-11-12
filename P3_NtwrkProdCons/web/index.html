@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uploaded Videos</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #111; color: #eee; }
+  #stats { color: #aaa; margin-bottom: 12px; font-size: 14px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .card { background: #222; border-radius: 6px; overflow: hidden; cursor: pointer; }
+  .card video { width: 100%; aspect-ratio: 16/9; background: #000; display: block; object-fit: contain; }
+  .card .name { padding: 6px 8px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); align-items: center; justify-content: center; }
+  #modal.open { display: flex; }
+  #modal video { max-width: 90vw; max-height: 85vh; }
+</style>
+</head>
+<body>
+<h2>Uploaded Videos</h2>
+<div id="stats"></div>
+<div id="grid"></div>
+<div id="modal"><video id="player" controls></video></div>
+
+<script>
+const PREVIEW_SECONDS = 10;
+const grid = document.getElementById('grid');
+const modal = document.getElementById('modal');
+const player = document.getElementById('player');
+let lastKey = '';
+
+function card(v) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  const vid = document.createElement('video');
+  vid.muted = true;
+  vid.preload = 'metadata';
+  vid.playsInline = true;
+  // Use the generated 10s preview if the consumer made one, else the original.
+  vid.src = v.preview || v.url;
+  // Either way, never play past 10 seconds while previewing; loop back.
+  vid.addEventListener('timeupdate', () => {
+    if (vid.currentTime >= PREVIEW_SECONDS) vid.currentTime = 0;
+  });
+  el.addEventListener('mouseenter', () => { vid.currentTime = 0; vid.play().catch(() => {}); });
+  el.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
+  el.addEventListener('click', () => {
+    player.src = v.url;
+    modal.classList.add('open');
+    player.play().catch(() => {});
+  });
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = v.name;
+  el.append(vid, name);
+  return el;
+}
+
+modal.addEventListener('click', e => {
+  if (e.target === modal) { player.pause(); player.removeAttribute('src'); player.load(); modal.classList.remove('open'); }
+});
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/videos');
+    const d = await r.json();
+    document.getElementById('stats').textContent =
+      `queue ${d.queue_len}/${d.queue_cap} · consumers ${d.consumers} · accepted ${d.accepted} · saved ${d.saved} · dropped ${d.dropped}`;
+    // Only rebuild the grid when the set of videos/previews changes, so hovering isn't interrupted.
+    const key = d.videos.map(v => v.name + '|' + (v.preview || '')).join(',');
+    if (key !== lastKey) {
+      lastKey = key;
+      grid.replaceChildren(...d.videos.map(card));
+    }
+  } catch (e) { /* consumer restarting; try again */ }
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

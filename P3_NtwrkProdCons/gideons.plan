@@ -11,3 +11,28 @@ what do i need to know?
 - docker 
 - find out if we need a database
     - ans: apparently not.
+
+
+----
+praise the machine.
+
+The gRPC producer/consumer is built in P3_NtwrkProdCons/ and works. I ran a full test: 3 producers sent 12 videos to 1 consumer with a queue length of 2. 3 videos were saved and 9 were dropped, which is the leaky bucket working. Each saved video got a 10-second preview, and the web page and its data endpoint both loaded.
+
+How to run
+cd P3_NtwrkProdCons
+go build -o main .
+./main consumer -c 2 -q 5        # gRPC on :50051, web page at http://localhost:8080
+./main producer -p 3             # producer i uploads every video in videos/p<i>/
+The settings come from config.json, and -p, -c, -q, -addr, -http and -input override them. If the producer and consumer are on different machines, point the producer at the consumer with -addr <consumer-ip>:50051.
+
+How it works
+- Producer (producer.go): starts p threads. Each one reads the video files in its own folder and sends them to the consumer in 64 KB pieces, using the UploadVideo call already defined in your upload.proto. When the consumer replies, the producer logs whether the video was accepted or dropped.
+- Consumer (consumer.go): the gRPC server handles each upload on its own thread, so several uploads can come in at once. Once a video has fully arrived, the consumer tries to add it to a queue that holds at most q videos. If the queue is full, the video is dropped right away and the producer is told so. If the queue is already full when an upload starts, it is dropped before the rest of the file is sent.
+- c consumer threads take videos off the queue, save each one to uploads/ (the single folder), and make a 10-second preview in previews/ using ffmpeg. If two videos have the same name, the later one gets a _1, _2, … suffix.
+- Web page (web/index.html, built into the program): shows a grid of the uploaded videos. Hovering plays the 10-second preview on a loop, and clicking opens the full video. The page also shows the queue length and the accepted, saved and dropped counts, and refreshes every 2 seconds. If ffmpeg isn't installed, hovering plays the first 10 seconds of the original video instead.
+
+Notes
+- I kept your existing upload.proto and the code generated from it unchanged. p3.go now picks producer or consumer mode from the first argument.
+- go mod tidy updated go.mod. I also added a .gitignore for uploads/, previews/ and videos/.
+- The compiled main program is tracked in git and was overwritten by the new build. You might want to remove it from git and ignore it.
+- Each upload is held in memory until it has fully arrived. That's fine for typical assignment-sized clips but not for very large files.

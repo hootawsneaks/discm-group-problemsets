@@ -1,5 +1,10 @@
 {
     "producers": 1,
     "consumers": 1,
-    "max_queue": 5
+    "max_queue": 5,
+    "address": "localhost:50051",
+    "http_addr": ":8080",
+    "input_dir": "videos",
+    "upload_dir": "uploads",
+    "preview_dir": "previews"
 }
