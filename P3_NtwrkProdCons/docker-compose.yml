@@ -1,0 +1,18 @@
+# Local demo: consumer and producer in separate containers talking over gRPC.
+# For separate VMs, run only one service per VM (see README.md).
+services:
+  consumer:
+    build: .
+    command: ["consumer", "-c", "2", "-q", "5"]
+    ports:
+      - "50051:50051"
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+
+  producer:
+    build: .
+    command: ["producer", "-p", "3", "-addr", "consumer:50051"]
+    depends_on: [consumer]
+    volumes:
+      - ./videos:/app/videos:ro

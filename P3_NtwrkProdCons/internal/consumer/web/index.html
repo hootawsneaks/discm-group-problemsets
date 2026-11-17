@@ -13,20 +13,22 @@
   .card .name { padding: 6px 8px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); align-items: center; justify-content: center; }
   #modal.open { display: flex; }
-  #modal video { max-width: 90vw; max-height: 85vh; }
+  #modal video { max-width: 90vw; max-height: 85vh; display: block; }
+  #note { color: #f90; font-size: 13px; margin-top: 6px; }
 </style>
 </head>
 <body>
 <h2>Uploaded Videos</h2>
 <div id="stats"></div>
 <div id="grid"></div>
-<div id="modal"><video id="player" controls></video></div>
+<div id="modal"><div><video id="player" controls></video><div id="note"></div></div></div>
 
 <script>
 const PREVIEW_SECONDS = 10;
 const grid = document.getElementById('grid');
 const modal = document.getElementById('modal');
 const player = document.getElementById('player');
+const note = document.getElementById('note');
 let lastKey = '';
 
 function card(v) {
@@ -45,7 +47,9 @@ function card(v) {
   el.addEventListener('mouseenter', () => { vid.currentTime = 0; vid.play().catch(() => {}); });
   el.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
   el.addEventListener('click', () => {
-    player.src = v.url;
+    player.src = v.play || v.url;
+    note.textContent = v.playable ? '' :
+      'This format may not play in the browser (still converting, or ffmpeg is missing on the consumer).';
     modal.classList.add('open');
     player.play().catch(() => {});
   });
@@ -67,7 +71,7 @@ async function refresh() {
     document.getElementById('stats').textContent =
       `queue ${d.queue_len}/${d.queue_cap} · consumers ${d.consumers} · accepted ${d.accepted} · saved ${d.saved} · dropped ${d.dropped}`;
     // Only rebuild the grid when the set of videos/previews changes, so hovering isn't interrupted.
-    const key = d.videos.map(v => v.name + '|' + (v.preview || '')).join(',');
+    const key = d.videos.map(v => v.name + '|' + (v.preview || '') + '|' + v.play).join(',');
     if (key !== lastKey) {
       lastKey = key;
       grid.replaceChildren(...d.videos.map(card));

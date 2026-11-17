@@ -2,9 +2,14 @@
     "producers": 1,
     "consumers": 1,
     "max_queue": 5,
-    "address": "localhost:50051",
+
+    "listen_addr": ":50051",
     "http_addr": ":8080",
+    "upload_dir": "data/uploads",
+    "preview_dir": "data/previews",
+    "convert_dir": "data/converted",
+
+    "consumer_addr": "localhost:50051",
     "input_dir": "videos",
-    "upload_dir": "uploads",
-    "preview_dir": "previews"
+    "connect_wait": "60s"
 }

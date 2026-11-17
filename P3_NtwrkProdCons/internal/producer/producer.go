@@ -1,4 +1,6 @@
-package main
+// Package producer reads videos from per-thread folders and uploads them to the
+// consumer over gRPC.
+package producer
 
 import (
 	"context"
@@ -11,9 +13,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"p3/internal/config"
 	pb "p3/proto"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -23,14 +27,18 @@ var videoExts = map[string]bool{
 	".mp4": true, ".mov": true, ".mkv": true, ".webm": true, ".avi": true, ".m4v": true,
 }
 
-// runProducer starts p producer threads. Producer i uploads every video in
+// Run starts p producer threads. Producer i uploads every video in
 // <input_dir>/p<i> to the consumer over gRPC.
-func runProducer(cfg Config) error {
-	conn, err := grpc.NewClient(cfg.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func Run(cfg config.Config) error {
+	conn, err := grpc.NewClient(cfg.ConsumerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+
+	if err := waitReady(conn, cfg); err != nil {
+		return err
+	}
 	client := pb.NewMediaUploadClient(conn)
 
 	var accepted, dropped, failed atomic.Int64
@@ -67,6 +75,26 @@ func runProducer(cfg Config) error {
 	return nil
 }
 
+// waitReady blocks until the consumer is reachable or cfg.ConnectWait passes,
+// so starting the producer VM before the consumer VM doesn't fail every upload.
+func waitReady(conn *grpc.ClientConn, cfg config.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ConnectWait.Duration)
+	defer cancel()
+	log.Printf("connecting to consumer at %s (waiting up to %s)...", cfg.ConsumerAddr, cfg.ConnectWait.Duration)
+	conn.Connect()
+	for {
+		s := conn.GetState()
+		if s == connectivity.Ready {
+			log.Printf("connected to consumer at %s", cfg.ConsumerAddr)
+			return nil
+		}
+		if !conn.WaitForStateChange(ctx, s) {
+			return fmt.Errorf("consumer at %s not reachable after %s (is it running, and is the port open?)",
+				cfg.ConsumerAddr, cfg.ConnectWait.Duration)
+		}
+	}
+}
+
 func listVideos(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -81,7 +109,8 @@ func listVideos(dir string) ([]string, error) {
 	return out, nil
 }
 
-// uploadFile streams one video to the consumer in chunks.
+// uploadFile streams one video to the consumer in chunks. WaitForReady makes a
+// brief connection drop wait for reconnection instead of failing the upload.
 func uploadFile(ctx context.Context, client pb.MediaUploadClient, producerID int32, path string) (*pb.UploadStatus, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -89,7 +118,7 @@ func uploadFile(ctx context.Context, client pb.MediaUploadClient, producerID int
 	}
 	defer f.Close()
 
-	stream, err := client.UploadVideo(ctx)
+	stream, err := client.UploadVideo(ctx, grpc.WaitForReady(true))
 	if err != nil {
 		return nil, err
 	}
