@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>Courses</h1>
+{{with .Data}}
+<table border="1" cellpadding="4">
+  <tr><th>Code</th><th>Title</th><th>Faculty</th><th>Slots</th><th>Status</th>{{if eq $.User.Role "student"}}<th></th>{{end}}</tr>
+  {{range .}}
+  <tr>
+    <td>{{.Code}}</td><td>{{.Title}}</td><td>{{.Faculty}}</td>
+    <td>{{.Enrolled}}/{{.Capacity}}</td>
+    <td>{{if .Open}}open{{else}}closed{{end}}</td>
+    {{if eq $.User.Role "student"}}
+    <td>
+      {{if .EnrolledByMe}}enrolled
+      {{else if and .Open (lt .Enrolled .Capacity)}}
+        <form method="post" action="/enroll"><input type="hidden" name="code" value="{{.Code}}"><button>Enroll</button></form>
+      {{end}}
+    </td>
+    {{end}}
+  </tr>
+  {{end}}
+</table>
+{{end}}
+{{end}}

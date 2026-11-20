@@ -1,18 +1,23 @@
 # Local demo: consumer and producer in separate containers talking over gRPC.
+# All settings come from ./config.json (mounted, so edits apply on restart without rebuilding).
 # For separate VMs, run only one service per VM (see README.md).
 services:
   consumer:
     build: .
-    command: ["consumer", "-c", "2", "-q", "5"]
+    command: ["consumer"]
     ports:
       - "50051:50051"
       - "8080:8080"
     volumes:
+      - ./config.json:/app/config.json:ro
       - ./data:/app/data
 
   producer:
     build: .
-    command: ["producer", "-p", "3", "-addr", "consumer:50051"]
+    command: ["producer"]
+    # Share the consumer's network so config.json's "localhost:50051" reaches it.
+    network_mode: "service:consumer"
     depends_on: [consumer]
     volumes:
+      - ./config.json:/app/config.json:ro
       - ./videos:/app/videos:ro

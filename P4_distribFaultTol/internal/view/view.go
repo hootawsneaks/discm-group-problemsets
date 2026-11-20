@@ -1,0 +1,250 @@
+// Package view is the view node (the V and C of MVC). It serves HTML and talks
+// to the other nodes only through gRPC. If a node is down, only the pages that
+// need it show an error; everything else keeps working.
+package view
+
+import (
+	"context"
+	"embed"
+	"fmt"
+	"html/template"
+	"log"
+	"net/http"
+	"net/url"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+
+	"p4/internal/authz"
+	"p4/internal/config"
+	pb "p4/proto"
+)
+
+//go:embed templates/*.html
+var templateFS embed.FS
+
+const cookieName = "token"
+
+type app struct {
+	cfg    *config.Config
+	auth   pb.AuthClient
+	course pb.CourseClient
+	grade  pb.GradeClient
+	pages  map[string]*template.Template
+}
+
+// page is what every template receives.
+type page struct {
+	User *authz.Claims
+	Msg  string // success message (from ?msg=)
+	Err  string // error message
+	Data any
+}
+
+func Run(cfg *config.Config) error {
+	a := &app{cfg: cfg, pages: map[string]*template.Template{}}
+	for _, name := range []string{"login", "courses", "grades"} {
+		a.pages[name] = template.Must(template.ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
+	}
+	var err error
+	conns := map[string]*grpc.ClientConn{}
+	for name, addr := range map[string]string{"auth": cfg.AuthAddr, "course": cfg.CourseAddr, "grade": cfg.GradeAddr} {
+		// NewClient connects lazily, so the view starts even when other nodes are down.
+		// A short backoff means a node that comes back is picked up within seconds.
+		conns[name], err = grpc.NewClient(addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithConnectParams(grpc.ConnectParams{Backoff: backoff.Config{
+				BaseDelay: 200 * time.Millisecond, Multiplier: 1.6, MaxDelay: 2 * time.Second,
+			}}))
+		if err != nil {
+			return err
+		}
+	}
+	a.auth = pb.NewAuthClient(conns["auth"])
+	a.course = pb.NewCourseClient(conns["course"])
+	a.grade = pb.NewGradeClient(conns["grade"])
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", a.home)
+	mux.HandleFunc("GET /login", a.loginForm)
+	mux.HandleFunc("POST /login", a.login)
+	mux.HandleFunc("POST /logout", a.logout)
+	mux.HandleFunc("GET /courses", a.requireLogin(a.courses))
+	mux.HandleFunc("POST /enroll", a.requireLogin(a.enroll))
+	mux.HandleFunc("GET /grades", a.requireLogin(a.grades))
+	mux.HandleFunc("POST /grades", a.requireLogin(a.uploadGrade))
+
+	fmt.Println("view node on http://localhost" + cfg.ViewListen)
+	return http.ListenAndServe(cfg.ViewListen, mux)
+}
+
+// ---- helpers ----
+
+// user verifies the JWT cookie locally (no call to the auth node).
+func (a *app) user(r *http.Request) (*authz.Claims, string) {
+	ck, err := r.Cookie(cookieName)
+	if err != nil {
+		return nil, ""
+	}
+	c, err := authz.Parse(a.cfg.JWTSecret, ck.Value)
+	if err != nil {
+		return nil, ""
+	}
+	return c, ck.Value
+}
+
+type ctxKey struct{}
+
+type session struct {
+	user  *authz.Claims
+	token string
+}
+
+func (a *app) requireLogin(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c, tok := a.user(r)
+		if c == nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		h(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, session{c, tok})))
+	}
+}
+
+func sess(r *http.Request) session { return r.Context().Value(ctxKey{}).(session) }
+
+// rpcCtx is a context for one gRPC call: token attached, bounded by rpc_timeout.
+func (a *app) rpcCtx(r *http.Request) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(r.Context(), a.cfg.Timeout)
+	if s, ok := r.Context().Value(ctxKey{}).(session); ok {
+		ctx = authz.WithToken(ctx, s.token)
+	}
+	return ctx, cancel
+}
+
+// errMsg turns a gRPC error into something to show the user.
+func errMsg(node string, err error) string {
+	st, _ := status.FromError(err)
+	switch st.Code() {
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return fmt.Sprintf("The %s node is down right now. This feature is unavailable; the rest of the site still works.", node)
+	}
+	return st.Message()
+}
+
+func (a *app) render(w http.ResponseWriter, name string, p page) {
+	if err := a.pages[name].ExecuteTemplate(w, "layout", p); err != nil {
+		log.Println("render:", err)
+	}
+}
+
+func redirectMsg(w http.ResponseWriter, r *http.Request, path, msg string) {
+	http.Redirect(w, r, path+"?msg="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+// ---- controllers ----
+
+func (a *app) home(w http.ResponseWriter, r *http.Request) {
+	if c, _ := a.user(r); c != nil {
+		http.Redirect(w, r, "/courses", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (a *app) loginForm(w http.ResponseWriter, r *http.Request) {
+	c, _ := a.user(r)
+	a.render(w, "login", page{User: c, Msg: r.URL.Query().Get("msg")})
+}
+
+func (a *app) login(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.rpcCtx(r)
+	defer cancel()
+	res, err := a.auth.Login(ctx, &pb.LoginRequest{Username: r.FormValue("username"), Password: r.FormValue("password")})
+	if err != nil {
+		a.render(w, "login", page{Err: errMsg("auth", err)})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: cookieName, Value: res.Token, Path: "/", HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, MaxAge: int(a.cfg.TTL.Seconds()),
+	})
+	http.Redirect(w, r, "/courses", http.StatusSeeOther)
+}
+
+func (a *app) logout(w http.ResponseWriter, r *http.Request) {
+	msg := "Logged out."
+	if c, tok := a.user(r); c != nil {
+		ctx, cancel := context.WithTimeout(authz.WithToken(r.Context(), tok), a.cfg.Timeout)
+		defer cancel()
+		if _, err := a.auth.Logout(ctx, &pb.Empty{}); err != nil {
+			// The cookie is cleared anyway; the auth node just couldn't record it.
+			msg = "Logged out (" + errMsg("auth", err) + ")"
+		}
+	}
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1})
+	redirectMsg(w, r, "/login", msg)
+}
+
+func (a *app) courses(w http.ResponseWriter, r *http.Request) {
+	p := page{User: sess(r).user, Msg: r.URL.Query().Get("msg"), Err: r.URL.Query().Get("err")}
+	ctx, cancel := a.rpcCtx(r)
+	defer cancel()
+	res, err := a.course.ListCourses(ctx, &pb.Empty{})
+	if err != nil {
+		p.Err = errMsg("course", err)
+	} else {
+		p.Data = res.Courses
+	}
+	a.render(w, "courses", p)
+}
+
+func (a *app) enroll(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.rpcCtx(r)
+	defer cancel()
+	code := r.FormValue("code")
+	if _, err := a.course.Enroll(ctx, &pb.EnrollRequest{Code: code}); err != nil {
+		http.Redirect(w, r, "/courses?err="+url.QueryEscape(errMsg("course", err)), http.StatusSeeOther)
+		return
+	}
+	redirectMsg(w, r, "/courses", "Enrolled in "+code+".")
+}
+
+func (a *app) grades(w http.ResponseWriter, r *http.Request) {
+	s := sess(r)
+	p := page{User: s.user, Msg: r.URL.Query().Get("msg"), Err: r.URL.Query().Get("err")}
+	ctx, cancel := a.rpcCtx(r)
+	defer cancel()
+	var res *pb.GradeList
+	var err error
+	if s.user.Role == authz.RoleFaculty {
+		res, err = a.grade.UploadedGrades(ctx, &pb.Empty{})
+	} else {
+		res, err = a.grade.MyGrades(ctx, &pb.Empty{})
+	}
+	if err != nil {
+		p.Err = errMsg("grade", err)
+	} else {
+		p.Data = res.Grades
+	}
+	a.render(w, "grades", p)
+}
+
+func (a *app) uploadGrade(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.rpcCtx(r)
+	defer cancel()
+	_, err := a.grade.UploadGrade(ctx, &pb.GradeEntry{
+		Student: r.FormValue("student"), Course: r.FormValue("course"),
+		Term: r.FormValue("term"), Grade: r.FormValue("grade"),
+	})
+	if err != nil {
+		http.Redirect(w, r, "/grades?err="+url.QueryEscape(errMsg("grade", err)), http.StatusSeeOther)
+		return
+	}
+	redirectMsg(w, r, "/grades", "Grade saved.")
+}
+

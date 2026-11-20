@@ -1,0 +1,28 @@
+{{define "content"}}
+{{if eq .User.Role "faculty"}}
+<h1>Upload grade</h1>
+<form method="post" action="/grades">
+  <p>Student username <input name="student" required></p>
+  <p>Course code <input name="course" required></p>
+  <p>Term <input name="term" placeholder="T1 2025-2026" required></p>
+  <p>Grade
+    <select name="grade">
+      <option>4.0</option><option>3.5</option><option>3.0</option><option>2.5</option>
+      <option>2.0</option><option>1.5</option><option>1.0</option><option>0.0</option>
+    </select>
+  </p>
+  <button>Upload</button>
+</form>
+<h2>Grades you uploaded</h2>
+{{else}}
+<h1>My grades</h1>
+{{end}}
+{{with .Data}}
+<table border="1" cellpadding="4">
+  <tr>{{if eq $.User.Role "faculty"}}<th>Student</th>{{end}}<th>Course</th><th>Term</th><th>Grade</th></tr>
+  {{range .}}
+  <tr>{{if eq $.User.Role "faculty"}}<td>{{.Student}}</td>{{end}}<td>{{.Course}}</td><td>{{.Term}}</td><td>{{.Grade}}</td></tr>
+  {{end}}
+</table>
+{{else}}{{if not $.Err}}<p>No grades yet.</p>{{end}}{{end}}
+{{end}}

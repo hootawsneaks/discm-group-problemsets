@@ -1,5 +1,5 @@
 {
-    "producers": 1,
+    "producers": 2,
     "consumers": 1,
     "max_queue": 5,
 

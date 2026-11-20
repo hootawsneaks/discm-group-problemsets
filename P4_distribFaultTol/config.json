@@ -1,0 +1,10 @@
+{
+  "view_listen": ":8080",
+  "auth_addr": "localhost:50051",
+  "course_addr": "localhost:50052",
+  "grade_addr": "localhost:50053",
+  "jwt_secret": "change-me-shared-by-all-nodes",
+  "token_ttl": "1h",
+  "rpc_timeout": "2s",
+  "data_dir": "data"
+}

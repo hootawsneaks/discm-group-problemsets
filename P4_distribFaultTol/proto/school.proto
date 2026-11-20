@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package school;
+
+option go_package = "p4/proto";
+
+message Empty {}
+
+// ---------- Auth node ----------
+service Auth {
+  rpc Login(LoginRequest) returns (LoginReply);
+  // Uses the JWT sent in the "authorization" metadata.
+  rpc Logout(Empty) returns (Empty);
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginReply {
+  string token = 1;
+  string username = 2;
+  string role = 3; // "student" or "faculty"
+  string name = 4;
+}
+
+// ---------- Course node ----------
+service Course {
+  rpc ListCourses(Empty) returns (CourseList);
+  rpc Enroll(EnrollRequest) returns (Empty);
+}
+
+message CourseInfo {
+  string code = 1;
+  string title = 2;
+  string faculty = 3;
+  int32 capacity = 4;
+  int32 enrolled = 5;
+  bool open = 6;
+  bool enrolled_by_me = 7;
+}
+
+message CourseList { repeated CourseInfo courses = 1; }
+
+message EnrollRequest { string code = 1; }
+
+// ---------- Grade node ----------
+service Grade {
+  rpc MyGrades(Empty) returns (GradeList);      // student
+  rpc UploadedGrades(Empty) returns (GradeList); // faculty: grades they uploaded
+  rpc UploadGrade(GradeEntry) returns (Empty);   // faculty
+}
+
+message GradeEntry {
+  string student = 1;
+  string course = 2;
+  string term = 3;
+  string grade = 4;
+  string faculty = 5; // set by the server
+}
+
+message GradeList { repeated GradeEntry grades = 1; }

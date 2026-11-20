@@ -1,0 +1,29 @@
+# Local demo: each node in its own container on a shared network, talking gRPC.
+# Take a node down with e.g. `docker compose stop grade`; only grade pages break.
+# For separate VMs, run one service per VM (see README.md).
+x-node: &node
+  build: .
+  image: p4
+  restart: "no"
+  volumes:
+    - ./config.json:/app/config.json:ro
+    - ./data:/app/data
+  environment:
+    P4_AUTH_ADDR: auth:50051
+    P4_COURSE_ADDR: course:50052
+    P4_GRADE_ADDR: grade:50053
+
+services:
+  view:
+    <<: *node
+    command: ["view"]
+    ports: ["8080:8080"]
+  auth:
+    <<: *node
+    command: ["auth"]
+  course:
+    <<: *node
+    command: ["course"]
+  grade:
+    <<: *node
+    command: ["grade"]
