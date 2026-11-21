@@ -41,7 +41,7 @@ func Run(cfg config.Config) error {
 	}
 	client := pb.NewMediaUploadClient(conn)
 
-	var accepted, dropped, failed atomic.Int64
+	var accepted, dropped, duplicates, failed atomic.Int64
 	var wg sync.WaitGroup
 	for i := 1; i <= cfg.Producers; i++ {
 		dir := filepath.Join(cfg.InputDir, fmt.Sprintf("p%d", i))
@@ -63,7 +63,12 @@ func Run(cfg config.Config) error {
 				case st.GetAccepted():
 					accepted.Add(1)
 					log.Printf("[producer %d] %s: accepted (%s)", id, filepath.Base(f), st.GetMessage())
+				case strings.HasPrefix(st.GetMessage(), "duplicate"):
+					// The consumer already has this exact video (bonus: duplicate detection).
+					duplicates.Add(1)
+					log.Printf("[producer %d] %s: DUPLICATE (%s)", id, filepath.Base(f), st.GetMessage())
 				default:
+					// The consumer told us its queue is full (bonus: back-pressure signal).
 					dropped.Add(1)
 					log.Printf("[producer %d] %s: DROPPED (%s)", id, filepath.Base(f), st.GetMessage())
 				}
@@ -71,7 +76,8 @@ func Run(cfg config.Config) error {
 		}(i, dir)
 	}
 	wg.Wait()
-	log.Printf("done: %d accepted, %d dropped, %d failed", accepted.Load(), dropped.Load(), failed.Load())
+	log.Printf("done: %d accepted, %d dropped (queue full), %d duplicate, %d failed",
+		accepted.Load(), dropped.Load(), duplicates.Load(), failed.Load())
 	return nil
 }
 
