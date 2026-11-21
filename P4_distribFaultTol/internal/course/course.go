@@ -93,6 +93,32 @@ func (s *server) Enroll(ctx context.Context, r *pb.EnrollRequest) (*pb.Empty, er
 	return &pb.Empty{}, nil
 }
 
+// Drop removes the student from a course they enrolled in.
+func (s *server) Drop(ctx context.Context, r *pb.EnrollRequest) (*pb.Empty, error) {
+	c, err := authz.Require(ctx, authz.RoleStudent)
+	if err != nil {
+		return nil, err
+	}
+	err = s.db.Update(func(d *data) error {
+		i := slices.IndexFunc(d.Courses, func(co Course) bool { return co.Code == r.Code })
+		if i < 0 {
+			return status.Errorf(codes.NotFound, "no course %q", r.Code)
+		}
+		co := &d.Courses[i]
+		j := slices.Index(co.Students, c.Username())
+		if j < 0 {
+			return status.Errorf(codes.FailedPrecondition, "not enrolled in %s", co.Code)
+		}
+		co.Students = slices.Delete(co.Students, j, j+1)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("%s dropped %s", c.Username(), r.Code)
+	return &pb.Empty{}, nil
+}
+
 func Run(cfg *config.Config) error {
 	db, err := store.Open(filepath.Join(cfg.DataDir, "course.json"), seed)
 	if err != nil {

@@ -34,7 +34,7 @@ message LoginRequest {
 message LoginReply {
   string token = 1;
   string username = 2;
-  string role = 3; // "student" or "faculty"
+  string role = 3; // "student", "faculty" or "registrar"
   string name = 4;
 }
 
@@ -42,6 +42,7 @@ message LoginReply {
 service Course {
   rpc ListCourses(Empty) returns (CourseList);
   rpc Enroll(EnrollRequest) returns (Empty);
+  rpc Drop(EnrollRequest) returns (Empty); // student leaves a course they enrolled in
 }
 
 message CourseInfo {
@@ -74,3 +75,36 @@ message GradeEntry {
 }
 
 message GradeList { repeated GradeEntry grades = 1; }
+
+
+// ---------- Announce node ----------
+// Registrar announcements: enrollment schedules per year level, enrollment
+// confirmation, payment deadlines. Its own object with its own full CRUD, on
+// its own node. Everyone can read (students only see what is addressed to
+// their year level); only registrar accounts can create, edit or delete.
+service Announce {
+  rpc ListAnnouncements(Empty) returns (AnnouncementList);
+  rpc GetAnnouncement(AnnouncementId) returns (Announcement);
+  rpc CreateAnnouncement(Announcement) returns (Announcement);
+  rpc UpdateAnnouncement(Announcement) returns (Announcement); // by id
+  rpc DeleteAnnouncement(AnnouncementId) returns (Empty);
+}
+
+message Announcement {
+  string id = 1;                  // set by the server on create
+  string category = 2;            // schedule | confirmation | payment | general
+  string title = 3;
+  string body = 4;
+  repeated int32 year_levels = 5; // empty = everyone; otherwise 1..4
+  int64 starts_at = 6;            // unix seconds, 0 = no start
+  int64 ends_at = 7;              // unix seconds, 0 = no end (e.g. a deadline)
+  bool pinned = 8;
+  string author = 9;              // set by the server
+  string author_name = 10;        // set by the server
+  int64 created_at = 11;          // set by the server
+  int64 updated_at = 12;          // set by the server
+}
+
+message AnnouncementId { string id = 1; }
+
+message AnnouncementList { repeated Announcement announcements = 1; }

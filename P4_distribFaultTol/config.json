@@ -3,6 +3,7 @@
   "auth_addr": "localhost:50051",
   "course_addr": "localhost:50052",
   "grade_addr": "localhost:50053",
+  "announce_addr": "localhost:50054",
   "jwt_secret": "change-me-shared-by-all-nodes",
   "token_ttl": "1h",
   "rpc_timeout": "2s",
@@ -11,6 +12,7 @@
   "tls_key": "certs/server.key",
   "tls_hosts": [],
   "pool_size": 4,
+  "timezone": "Asia/Manila",
   "revocation_cache": "0s",
   "revocation_timeout": "500ms"
 }

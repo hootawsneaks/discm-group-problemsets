@@ -1,5 +1,6 @@
 // Package pool keeps several gRPC connections open to one node and hands them
-// out round-robin (bonus 3: connection pooling).
+// out round-robin. (This pools node-to-node gRPC connections; it is not the
+// database connection pool.)
 //
 // One gRPC connection multiplexes many calls over a single HTTP/2 stream, which
 // is fine until the per-connection stream limit or a slow call starts queueing

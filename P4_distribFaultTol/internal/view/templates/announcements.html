@@ -1,0 +1,36 @@
+{{define "content"}}
+<h1>Registrar announcements</h1>
+{{with .Data}}
+{{if and (eq $.User.Role "student") .List}}<p>Showing announcements for everyone and for year {{$.User.Year}}.</p>{{end}}
+{{if .List}}
+<table border="1" cellpadding="4">
+  <tr><th></th><th>Category</th><th>Title</th><th>For</th><th>When</th><th>Posted</th></tr>
+  {{range .List}}
+  <tr{{if ended .EndsAt}} style="color:gray"{{end}}>
+    <td>{{if .Pinned}}&#128204;{{end}}</td>
+    <td>{{category .Category}}</td>
+    <td><a href="/announcements/{{.Id}}">{{.Title}}</a></td>
+    <td>{{years .YearLevels}}</td>
+    <td>
+      {{if .StartsAt}}{{when .StartsAt}}{{end}}
+      {{if and .StartsAt .EndsAt}} &ndash; {{else if .EndsAt}}until {{end}}
+      {{if .EndsAt}}{{when .EndsAt}}{{end}}
+      {{if ended .EndsAt}} (ended){{end}}
+    </td>
+    <td>{{when .CreatedAt}}{{if ne .CreatedAt .UpdatedAt}} (edited){{end}}</td>
+  </tr>
+  {{end}}
+</table>
+{{else if not $.Err}}
+<p>No announcements.</p>
+{{end}}
+
+{{if .CanEdit}}
+<h2>New announcement</h2>
+<form method="post" action="/announcements">
+  {{template "annform" .}}
+  <button>Post</button>
+</form>
+{{end}}
+{{end}}
+{{end}}

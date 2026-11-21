@@ -29,26 +29,31 @@ import (
 )
 
 const (
-	RoleStudent = "student"
-	RoleFaculty = "faculty"
+	RoleStudent   = "student"
+	RoleFaculty   = "faculty"
+	RoleRegistrar = "registrar"
 )
 
 type Claims struct {
 	Name string `json:"name"`
 	Role string `json:"role"`
+	// Year is a student's year level (1-4), 0 for everyone else. It travels in
+	// the token so a node can act on it without asking the auth node.
+	Year int `json:"year,omitempty"`
 	jwt.RegisteredClaims
 }
 
 // Username is the token subject.
 func (c *Claims) Username() string { return c.Subject }
 
-func Sign(secret, username, name, role string, ttl time.Duration) (token string, c *Claims, err error) {
+func Sign(secret, username, name, role string, year int, ttl time.Duration) (token string, c *Claims, err error) {
 	id := make([]byte, 16)
 	rand.Read(id)
 	now := time.Now()
 	c = &Claims{
 		Name: name,
 		Role: role,
+		Year: year,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        hex.EncodeToString(id),
 			Subject:   username,

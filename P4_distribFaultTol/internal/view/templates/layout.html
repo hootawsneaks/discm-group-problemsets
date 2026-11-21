@@ -4,10 +4,11 @@
 <body>
 <p>
 {{if .User}}
+  <a href="/announcements">Announcements</a> |
   <a href="/courses">Courses</a> |
-  <a href="/grades">Grades</a> |
+  {{if ne .User.Role "registrar"}}<a href="/grades">Grades</a> |{{end}}
   <a href="/status">Node status</a> |
-  {{.User.Name}} ({{.User.Role}})
+  {{.User.Name}} ({{.User.Role}}{{if .User.Year}}, year {{.User.Year}}{{end}})
   <form method="post" action="/logout" style="display:inline"><button>Logout</button></form>
 {{else}}
   <a href="/login">Login</a> |
@@ -20,3 +21,24 @@
 {{template "content" .}}
 </body>
 </html>{{end}}
+
+{{/* The registrar's create/edit form, given an announcementForm. .Item is
+     the announcement being edited, or nil when creating a new one. */}}
+{{define "annform"}}
+<table>
+  <tr><td>Category</td><td>
+    <select name="category">
+      {{range .Categories}}<option value="{{.Value}}"{{if $.Item}}{{if eq $.Item.Category .Value}} selected{{end}}{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </td></tr>
+  <tr><td>Title</td><td><input name="title" size="60" required value="{{with .Item}}{{.Title}}{{end}}"></td></tr>
+  <tr><td>Body</td><td><textarea name="body" rows="4" cols="60" required>{{with .Item}}{{.Body}}{{end}}</textarea></td></tr>
+  <tr><td>For</td><td>
+    {{range .Years}}<label><input type="checkbox" name="year" value="{{.}}"{{if $.Item}}{{if hasYear $.Item.YearLevels .}} checked{{end}}{{end}}> year {{.}}</label> {{end}}
+    <small>(none ticked = everyone)</small>
+  </td></tr>
+  <tr><td>Starts</td><td><input type="datetime-local" name="starts_at" value="{{with .Item}}{{inputDT .StartsAt}}{{end}}"> <small>optional</small></td></tr>
+  <tr><td>Ends / deadline</td><td><input type="datetime-local" name="ends_at" value="{{with .Item}}{{inputDT .EndsAt}}{{end}}"> <small>optional</small></td></tr>
+  <tr><td>Pinned</td><td><input type="checkbox" name="pinned"{{with .Item}}{{if .Pinned}} checked{{end}}{{end}}> keep at the top</td></tr>
+</table>
+{{end}}

@@ -2,7 +2,8 @@
 # IP addresses are declared here (not auto-assigned by Docker) and the nodes
 # find each other by IP, so the connectivity between containers is configured
 # rather than inherited:
-#   view = 172.29.0.10, auth = .11, course = .12, grade = .13 on p4net.
+#   view = 172.29.0.10, auth = .11, course = .12, grade = .13, announce = .14
+#   on p4net.
 # Take a node down with e.g. `docker compose stop grade`; only grade pages break.
 # For separate VMs, run one service per VM (see README.md).
 x-node: &node
@@ -18,6 +19,7 @@ x-node: &node
     P4_AUTH_ADDR: 172.29.0.11:50051
     P4_COURSE_ADDR: 172.29.0.12:50052
     P4_GRADE_ADDR: 172.29.0.13:50053
+    P4_ANNOUNCE_ADDR: 172.29.0.14:50054
 
 services:
   view:
@@ -60,6 +62,16 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./data/grade:/app/data
+  # The extra feature on its own node: registrar announcements.
+  announce:
+    <<: *node
+    command: ["announce"]
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.14
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./data/announce:/app/data
 
 networks:
   p4net:

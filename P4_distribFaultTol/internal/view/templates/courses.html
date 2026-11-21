@@ -11,6 +11,7 @@
     {{if eq $.User.Role "student"}}
     <td>
       {{if .EnrolledByMe}}enrolled
+        <form method="post" action="/drop" style="display:inline"><input type="hidden" name="code" value="{{.Code}}"><button>Drop</button></form>
       {{else if and .Open (lt .Enrolled .Capacity)}}
         <form method="post" action="/enroll"><input type="hidden" name="code" value="{{.Code}}"><button>Enroll</button></form>
       {{end}}

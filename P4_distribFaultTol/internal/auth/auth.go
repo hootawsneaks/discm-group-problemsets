@@ -24,6 +24,7 @@ import (
 type User struct {
 	Name         string `json:"name"`
 	Role         string `json:"role"`
+	Year         int    `json:"year,omitempty"` // students only: year level 1-4
 	PasswordHash string `json:"password_hash"`
 }
 
@@ -41,18 +42,46 @@ type data struct {
 
 // Demo accounts; every password is "password".
 func seed() data {
-	users := map[string]User{
-		"alice": {"Alice Santos", authz.RoleStudent, ""},
-		"bob":   {"Bob Reyes", authz.RoleStudent, ""},
-		"prof1": {"Prof. Cruz", authz.RoleFaculty, ""},
-		"prof2": {"Prof. Lim", authz.RoleFaculty, ""},
-	}
+	users := seedUsers()
 	for k, u := range users {
 		h, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
 		u.PasswordHash = string(h)
 		users[k] = u
 	}
 	return data{Users: users, Sessions: map[string]Session{}}
+}
+
+func seedUsers() map[string]User {
+	return map[string]User{
+		"alice":     {"Alice Santos", authz.RoleStudent, 1, ""},
+		"bob":       {"Bob Reyes", authz.RoleStudent, 3, ""},
+		"prof1":     {"Prof. Cruz", authz.RoleFaculty, 0, ""},
+		"prof2":     {"Prof. Lim", authz.RoleFaculty, 0, ""},
+		"registrar": {"Office of the Registrar", authz.RoleRegistrar, 0, ""},
+	}
+}
+
+// addMissingSeedUsers brings a data file written by an older version up to
+// date: demo accounts it lacks are added and students get their year level.
+// Existing passwords and sessions are left alone.
+func addMissingSeedUsers(d *data) error {
+	for k, want := range seedUsers() {
+		u, ok := d.Users[k]
+		if !ok {
+			h, err := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+			if err != nil {
+				return err
+			}
+			want.PasswordHash = string(h)
+			d.Users[k] = want
+			continue
+		}
+		if u.Role == authz.RoleStudent && u.Year == 0 {
+			u.Year = want.Year
+			d.Users[k] = u
+		}
+	}
+	return nil
 }
 
 type server struct {
@@ -68,7 +97,7 @@ func (s *server) Login(_ context.Context, r *pb.LoginRequest) (*pb.LoginReply, e
 	if !ok || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(r.Password)) != nil {
 		return nil, status.Error(codes.Unauthenticated, "wrong username or password")
 	}
-	tok, c, err := authz.Sign(s.cfg.JWTSecret, r.Username, u.Name, u.Role, s.cfg.TTL)
+	tok, c, err := authz.Sign(s.cfg.JWTSecret, r.Username, u.Name, u.Role, u.Year, s.cfg.TTL)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -112,6 +141,9 @@ func (s *server) SessionStatus(_ context.Context, r *pb.SessionQuery) (*pb.Sessi
 func Run(cfg *config.Config) error {
 	db, err := store.Open(filepath.Join(cfg.DataDir, "auth.json"), seed)
 	if err != nil {
+		return err
+	}
+	if err := db.Update(addMissingSeedUsers); err != nil {
 		return err
 	}
 	lis, err := net.Listen("tcp", config.ListenAddr(cfg.AuthAddr))

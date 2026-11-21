@@ -1,0 +1,25 @@
+{{define "content"}}
+<p><a href="/announcements">&larr; All announcements</a></p>
+{{with .Data}}{{with .Item}}
+<h1>{{if .Pinned}}&#128204; {{end}}{{.Title}}</h1>
+<p>
+  <b>{{category .Category}}</b> &middot; for {{years .YearLevels}}
+  {{if .StartsAt}}&middot; from {{when .StartsAt}}{{end}}
+  {{if .EndsAt}}&middot; {{if .StartsAt}}to{{else}}until{{end}} {{when .EndsAt}}{{if ended .EndsAt}} (ended){{end}}{{end}}
+</p>
+<p style="white-space:pre-wrap">{{.Body}}</p>
+<p><small>Posted by {{.AuthorName}} on {{when .CreatedAt}}{{if ne .CreatedAt .UpdatedAt}}, edited {{when .UpdatedAt}}{{end}}</small></p>
+{{end}}
+
+{{if and .CanEdit .Item}}
+<h2>Edit</h2>
+<form method="post" action="/announcements/{{.Item.Id}}">
+  {{template "annform" .}}
+  <button>Save changes</button>
+</form>
+<form method="post" action="/announcements/{{.Item.Id}}/delete" style="margin-top:1em">
+  <button>Delete this announcement</button>
+</form>
+{{end}}
+{{end}}
+{{end}}

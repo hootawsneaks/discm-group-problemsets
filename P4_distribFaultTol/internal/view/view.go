@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"google.golang.org/grpc"
@@ -32,12 +33,13 @@ var templateFS embed.FS
 const cookieName = "token"
 
 type app struct {
-	cfg    *config.Config
-	auth   pb.AuthClient
-	course pb.CourseClient
-	grade  pb.GradeClient
-	pools  map[string]*pool.Pool
-	pages  map[string]*template.Template
+	cfg      *config.Config
+	auth     pb.AuthClient
+	course   pb.CourseClient
+	grade    pb.GradeClient
+	announce pb.AnnounceClient
+	pools    map[string]*pool.Pool
+	pages    map[string]*template.Template
 }
 
 // page is what every template receives.
@@ -50,11 +52,19 @@ type page struct {
 
 func Run(cfg *config.Config) error {
 	a := &app{cfg: cfg, pages: map[string]*template.Template{}, pools: map[string]*pool.Pool{}}
-	for _, name := range []string{"login", "courses", "grades", "status"} {
-		a.pages[name] = template.Must(template.ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
+	funcs := template.FuncMap{
+		"when":     a.when,
+		"inputDT":  a.inputDT,
+		"ended":    func(s int64) bool { return s != 0 && time.Unix(s, 0).Before(time.Now()) },
+		"years":    yearsLabel,
+		"hasYear":  func(ys []int32, y int) bool { return slices.Contains(ys, int32(y)) },
+		"category": categoryLabel,
+	}
+	for _, name := range []string{"login", "courses", "grades", "status", "announcements", "announcement"} {
+		a.pages[name] = template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 
-	// One pool of connections per node (bonus 3). grpc.NewClient connects
+	// One pool of gRPC connections per node. grpc.NewClient connects
 	// lazily, so the view starts even when other nodes are down, and a short
 	// backoff means a node that comes back is picked up within seconds.
 	opts := []grpc.DialOption{
@@ -63,7 +73,9 @@ func Run(cfg *config.Config) error {
 			BaseDelay: 200 * time.Millisecond, Multiplier: 1.6, MaxDelay: 2 * time.Second,
 		}}),
 	}
-	for name, addr := range map[string]string{"auth": cfg.AuthAddr, "course": cfg.CourseAddr, "grade": cfg.GradeAddr} {
+	for name, addr := range map[string]string{
+		"auth": cfg.AuthAddr, "course": cfg.CourseAddr, "grade": cfg.GradeAddr, "announce": cfg.AnnounceAddr,
+	} {
 		p, err := pool.New(addr, cfg.PoolSize, opts...)
 		if err != nil {
 			return err
@@ -74,6 +86,7 @@ func Run(cfg *config.Config) error {
 	a.auth = pb.NewAuthClient(a.pools["auth"])
 	a.course = pb.NewCourseClient(a.pools["course"])
 	a.grade = pb.NewGradeClient(a.pools["grade"])
+	a.announce = pb.NewAnnounceClient(a.pools["announce"])
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", a.home)
@@ -83,8 +96,14 @@ func Run(cfg *config.Config) error {
 	mux.HandleFunc("GET /status", a.status)
 	mux.HandleFunc("GET /courses", a.requireLogin(a.courses))
 	mux.HandleFunc("POST /enroll", a.requireLogin(a.enroll))
+	mux.HandleFunc("POST /drop", a.requireLogin(a.drop))
 	mux.HandleFunc("GET /grades", a.requireLogin(a.grades))
 	mux.HandleFunc("POST /grades", a.requireLogin(a.uploadGrade))
+	mux.HandleFunc("GET /announcements", a.requireLogin(a.announcements))
+	mux.HandleFunc("POST /announcements", a.requireLogin(a.createAnnouncement))
+	mux.HandleFunc("GET /announcements/{id}", a.requireLogin(a.announcementPage))
+	mux.HandleFunc("POST /announcements/{id}", a.requireLogin(a.updateAnnouncement))
+	mux.HandleFunc("POST /announcements/{id}/delete", a.requireLogin(a.deleteAnnouncement))
 
 	hosts, err := tlsgen.EnsureCert(cfg.TLSCert, cfg.TLSKey, cfg.TLSHosts)
 	if err != nil {
@@ -92,8 +111,8 @@ func Run(cfg *config.Config) error {
 	}
 	fmt.Printf("view node on %s (self-signed certificate for %v; the browser will warn once)\n",
 		browserURL(cfg.ViewListen), hosts)
-	fmt.Printf("%d gRPC connection(s) per node: auth %s, course %s, grade %s\n",
-		cfg.PoolSize, cfg.AuthAddr, cfg.CourseAddr, cfg.GradeAddr)
+	fmt.Printf("%d gRPC connection(s) per node: auth %s, course %s, grade %s, announce %s\n",
+		cfg.PoolSize, cfg.AuthAddr, cfg.CourseAddr, cfg.GradeAddr, cfg.AnnounceAddr)
 	// ServeHTTPS also redirects plain http:// on this port, so typing
 	// "localhost:8080" lands on the page instead of a TLS error.
 	return tlsgen.ServeHTTPS(cfg.ViewListen, cfg.TLSCert, cfg.TLSKey, mux)
@@ -169,6 +188,15 @@ func redirectMsg(w http.ResponseWriter, r *http.Request, path, msg string) {
 	http.Redirect(w, r, path+"?msg="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
+// landing is where a logged-in user starts: the registrar has no courses or
+// grades of their own, so they start on announcements.
+func landing(role string) string {
+	if role == authz.RoleRegistrar {
+		return "/announcements"
+	}
+	return "/courses"
+}
+
 // browserURL turns a listen address like ":8080" into something clickable.
 func browserURL(addr string) string {
 	if len(addr) > 0 && addr[0] == ':' {
@@ -181,7 +209,7 @@ func browserURL(addr string) string {
 
 func (a *app) home(w http.ResponseWriter, r *http.Request) {
 	if c, _ := a.user(r); c != nil {
-		http.Redirect(w, r, "/courses", http.StatusSeeOther)
+		http.Redirect(w, r, landing(c.Role), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -205,7 +233,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		Secure:   true, // the view is served over HTTPS
 		SameSite: http.SameSiteLaxMode, MaxAge: int(a.cfg.TTL.Seconds()),
 	})
-	http.Redirect(w, r, "/courses", http.StatusSeeOther)
+	http.Redirect(w, r, landing(res.Role), http.StatusSeeOther)
 }
 
 func (a *app) logout(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +273,17 @@ func (a *app) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectMsg(w, r, "/courses", "Enrolled in "+code+".")
+}
+
+func (a *app) drop(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.rpcCtx(r)
+	defer cancel()
+	code := r.FormValue("code")
+	if _, err := a.course.Drop(ctx, &pb.EnrollRequest{Code: code}); err != nil {
+		http.Redirect(w, r, "/courses?err="+url.QueryEscape(errMsg("course", err)), http.StatusSeeOther)
+		return
+	}
+	redirectMsg(w, r, "/courses", "Dropped "+code+".")
 }
 
 func (a *app) grades(w http.ResponseWriter, r *http.Request) {
@@ -313,12 +352,16 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 			_, err := a.auth.Login(ctx, &pb.LoginRequest{})
 			return err
 		}},
-		{"course", "view courses, enroll", func(ctx context.Context) error {
+		{"course", "view courses, enroll, drop", func(ctx context.Context) error {
 			_, err := a.course.ListCourses(ctx, &pb.Empty{})
 			return err
 		}},
 		{"grade", "view grades, upload grades", func(ctx context.Context) error {
 			_, err := a.grade.MyGrades(ctx, &pb.Empty{})
+			return err
+		}},
+		{"announce", "registrar announcements (create, read, edit, delete)", func(ctx context.Context) error {
+			_, err := a.announce.ListAnnouncements(ctx, &pb.Empty{})
 			return err
 		}},
 	}

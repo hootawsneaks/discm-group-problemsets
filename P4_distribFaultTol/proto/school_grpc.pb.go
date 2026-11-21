@@ -211,6 +211,7 @@ var Auth_ServiceDesc = grpc.ServiceDesc{
 const (
 	Course_ListCourses_FullMethodName = "/school.Course/ListCourses"
 	Course_Enroll_FullMethodName      = "/school.Course/Enroll"
+	Course_Drop_FullMethodName        = "/school.Course/Drop"
 )
 
 // CourseClient is the client API for Course service.
@@ -221,6 +222,7 @@ const (
 type CourseClient interface {
 	ListCourses(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*CourseList, error)
 	Enroll(ctx context.Context, in *EnrollRequest, opts ...grpc.CallOption) (*Empty, error)
+	Drop(ctx context.Context, in *EnrollRequest, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type courseClient struct {
@@ -251,6 +253,16 @@ func (c *courseClient) Enroll(ctx context.Context, in *EnrollRequest, opts ...gr
 	return out, nil
 }
 
+func (c *courseClient) Drop(ctx context.Context, in *EnrollRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Course_Drop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CourseServer is the server API for Course service.
 // All implementations must embed UnimplementedCourseServer
 // for forward compatibility.
@@ -259,6 +271,7 @@ func (c *courseClient) Enroll(ctx context.Context, in *EnrollRequest, opts ...gr
 type CourseServer interface {
 	ListCourses(context.Context, *Empty) (*CourseList, error)
 	Enroll(context.Context, *EnrollRequest) (*Empty, error)
+	Drop(context.Context, *EnrollRequest) (*Empty, error)
 	mustEmbedUnimplementedCourseServer()
 }
 
@@ -274,6 +287,9 @@ func (UnimplementedCourseServer) ListCourses(context.Context, *Empty) (*CourseLi
 }
 func (UnimplementedCourseServer) Enroll(context.Context, *EnrollRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Enroll not implemented")
+}
+func (UnimplementedCourseServer) Drop(context.Context, *EnrollRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method Drop not implemented")
 }
 func (UnimplementedCourseServer) mustEmbedUnimplementedCourseServer() {}
 func (UnimplementedCourseServer) testEmbeddedByValue()                {}
@@ -332,6 +348,24 @@ func _Course_Enroll_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Course_Drop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnrollRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CourseServer).Drop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Course_Drop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CourseServer).Drop(ctx, req.(*EnrollRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Course_ServiceDesc is the grpc.ServiceDesc for Course service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -346,6 +380,10 @@ var Course_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Enroll",
 			Handler:    _Course_Enroll_Handler,
+		},
+		{
+			MethodName: "Drop",
+			Handler:    _Course_Drop_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -528,6 +566,272 @@ var Grade_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UploadGrade",
 			Handler:    _Grade_UploadGrade_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/school.proto",
+}
+
+const (
+	Announce_ListAnnouncements_FullMethodName  = "/school.Announce/ListAnnouncements"
+	Announce_GetAnnouncement_FullMethodName    = "/school.Announce/GetAnnouncement"
+	Announce_CreateAnnouncement_FullMethodName = "/school.Announce/CreateAnnouncement"
+	Announce_UpdateAnnouncement_FullMethodName = "/school.Announce/UpdateAnnouncement"
+	Announce_DeleteAnnouncement_FullMethodName = "/school.Announce/DeleteAnnouncement"
+)
+
+// AnnounceClient is the client API for Announce service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ---------- Announce node ----------
+// Registrar announcements: enrollment schedules per year level, enrollment
+// confirmation, payment deadlines. Its own object with its own full CRUD, on
+// its own node. Everyone can read (students only see what is addressed to
+// their year level); only registrar accounts can create, edit or delete.
+type AnnounceClient interface {
+	ListAnnouncements(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*AnnouncementList, error)
+	GetAnnouncement(ctx context.Context, in *AnnouncementId, opts ...grpc.CallOption) (*Announcement, error)
+	CreateAnnouncement(ctx context.Context, in *Announcement, opts ...grpc.CallOption) (*Announcement, error)
+	UpdateAnnouncement(ctx context.Context, in *Announcement, opts ...grpc.CallOption) (*Announcement, error)
+	DeleteAnnouncement(ctx context.Context, in *AnnouncementId, opts ...grpc.CallOption) (*Empty, error)
+}
+
+type announceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAnnounceClient(cc grpc.ClientConnInterface) AnnounceClient {
+	return &announceClient{cc}
+}
+
+func (c *announceClient) ListAnnouncements(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*AnnouncementList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnnouncementList)
+	err := c.cc.Invoke(ctx, Announce_ListAnnouncements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *announceClient) GetAnnouncement(ctx context.Context, in *AnnouncementId, opts ...grpc.CallOption) (*Announcement, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Announcement)
+	err := c.cc.Invoke(ctx, Announce_GetAnnouncement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *announceClient) CreateAnnouncement(ctx context.Context, in *Announcement, opts ...grpc.CallOption) (*Announcement, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Announcement)
+	err := c.cc.Invoke(ctx, Announce_CreateAnnouncement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *announceClient) UpdateAnnouncement(ctx context.Context, in *Announcement, opts ...grpc.CallOption) (*Announcement, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Announcement)
+	err := c.cc.Invoke(ctx, Announce_UpdateAnnouncement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *announceClient) DeleteAnnouncement(ctx context.Context, in *AnnouncementId, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Announce_DeleteAnnouncement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AnnounceServer is the server API for Announce service.
+// All implementations must embed UnimplementedAnnounceServer
+// for forward compatibility.
+//
+// ---------- Announce node ----------
+// Registrar announcements: enrollment schedules per year level, enrollment
+// confirmation, payment deadlines. Its own object with its own full CRUD, on
+// its own node. Everyone can read (students only see what is addressed to
+// their year level); only registrar accounts can create, edit or delete.
+type AnnounceServer interface {
+	ListAnnouncements(context.Context, *Empty) (*AnnouncementList, error)
+	GetAnnouncement(context.Context, *AnnouncementId) (*Announcement, error)
+	CreateAnnouncement(context.Context, *Announcement) (*Announcement, error)
+	UpdateAnnouncement(context.Context, *Announcement) (*Announcement, error)
+	DeleteAnnouncement(context.Context, *AnnouncementId) (*Empty, error)
+	mustEmbedUnimplementedAnnounceServer()
+}
+
+// UnimplementedAnnounceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAnnounceServer struct{}
+
+func (UnimplementedAnnounceServer) ListAnnouncements(context.Context, *Empty) (*AnnouncementList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAnnouncements not implemented")
+}
+func (UnimplementedAnnounceServer) GetAnnouncement(context.Context, *AnnouncementId) (*Announcement, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAnnouncement not implemented")
+}
+func (UnimplementedAnnounceServer) CreateAnnouncement(context.Context, *Announcement) (*Announcement, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateAnnouncement not implemented")
+}
+func (UnimplementedAnnounceServer) UpdateAnnouncement(context.Context, *Announcement) (*Announcement, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateAnnouncement not implemented")
+}
+func (UnimplementedAnnounceServer) DeleteAnnouncement(context.Context, *AnnouncementId) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteAnnouncement not implemented")
+}
+func (UnimplementedAnnounceServer) mustEmbedUnimplementedAnnounceServer() {}
+func (UnimplementedAnnounceServer) testEmbeddedByValue()                  {}
+
+// UnsafeAnnounceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AnnounceServer will
+// result in compilation errors.
+type UnsafeAnnounceServer interface {
+	mustEmbedUnimplementedAnnounceServer()
+}
+
+func RegisterAnnounceServer(s grpc.ServiceRegistrar, srv AnnounceServer) {
+	// If the following call panics, it indicates UnimplementedAnnounceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Announce_ServiceDesc, srv)
+}
+
+func _Announce_ListAnnouncements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnnounceServer).ListAnnouncements(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Announce_ListAnnouncements_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnnounceServer).ListAnnouncements(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Announce_GetAnnouncement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnnouncementId)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnnounceServer).GetAnnouncement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Announce_GetAnnouncement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnnounceServer).GetAnnouncement(ctx, req.(*AnnouncementId))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Announce_CreateAnnouncement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Announcement)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnnounceServer).CreateAnnouncement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Announce_CreateAnnouncement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnnounceServer).CreateAnnouncement(ctx, req.(*Announcement))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Announce_UpdateAnnouncement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Announcement)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnnounceServer).UpdateAnnouncement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Announce_UpdateAnnouncement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnnounceServer).UpdateAnnouncement(ctx, req.(*Announcement))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Announce_DeleteAnnouncement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnnouncementId)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnnounceServer).DeleteAnnouncement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Announce_DeleteAnnouncement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnnounceServer).DeleteAnnouncement(ctx, req.(*AnnouncementId))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Announce_ServiceDesc is the grpc.ServiceDesc for Announce service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Announce_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "school.Announce",
+	HandlerType: (*AnnounceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListAnnouncements",
+			Handler:    _Announce_ListAnnouncements_Handler,
+		},
+		{
+			MethodName: "GetAnnouncement",
+			Handler:    _Announce_GetAnnouncement_Handler,
+		},
+		{
+			MethodName: "CreateAnnouncement",
+			Handler:    _Announce_CreateAnnouncement_Handler,
+		},
+		{
+			MethodName: "UpdateAnnouncement",
+			Handler:    _Announce_UpdateAnnouncement_Handler,
+		},
+		{
+			MethodName: "DeleteAnnouncement",
+			Handler:    _Announce_DeleteAnnouncement_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
