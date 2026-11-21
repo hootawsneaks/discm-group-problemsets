@@ -11,6 +11,19 @@ service Auth {
   rpc Login(LoginRequest) returns (LoginReply);
   // Uses the JWT sent in the "authorization" metadata.
   rpc Logout(Empty) returns (Empty);
+  // Whether a session is still live. The course and grade nodes call this so a
+  // logout takes effect on them too; if the auth node is unreachable they let
+  // the call through, so logging out is the only thing auth being down breaks.
+  rpc SessionStatus(SessionQuery) returns (SessionState);
+}
+
+message SessionQuery {
+  string jti = 1; // the JWT's token id
+}
+
+message SessionState {
+  bool revoked = 1; // the user logged out
+  bool known = 2;   // false if this auth node has no record of the session
 }
 
 message LoginRequest {
