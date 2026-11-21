@@ -17,6 +17,7 @@ import (
 	"p4/internal/authz"
 	"p4/internal/config"
 	"p4/internal/db"
+	"p4/internal/valid"
 	pb "p4/proto"
 )
 
@@ -91,6 +92,9 @@ func (s *server) Enroll(ctx context.Context, r *pb.EnrollRequest) (*pb.Empty, er
 	if err != nil {
 		return nil, err
 	}
+	if _, err := valid.Exactly("course code", r.Code, valid.CourseCodeLen); err != nil {
+		return nil, err
+	}
 	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
 		// Lock the course row so two students can't both take the last slot.
 		var open bool
@@ -131,6 +135,9 @@ func (s *server) Enroll(ctx context.Context, r *pb.EnrollRequest) (*pb.Empty, er
 func (s *server) Drop(ctx context.Context, r *pb.EnrollRequest) (*pb.Empty, error) {
 	c, err := authz.Require(ctx, authz.RoleStudent)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := valid.Exactly("course code", r.Code, valid.CourseCodeLen); err != nil {
 		return nil, err
 	}
 	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
