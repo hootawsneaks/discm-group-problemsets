@@ -18,6 +18,7 @@ import (
 	"p4/internal/authz"
 	"p4/internal/config"
 	"p4/internal/db"
+	"p4/internal/valid"
 	pb "p4/proto"
 )
 
@@ -100,15 +101,24 @@ func (s *server) UploadGrade(ctx context.Context, r *pb.GradeEntry) (*pb.Empty, 
 	if err != nil {
 		return nil, err
 	}
+	student, err := valid.Text("student", r.Student, valid.MaxUsername)
+	if err != nil {
+		return nil, err
+	}
+	course, err := valid.Exactly("course", r.Course, valid.CourseCodeLen)
+	if err != nil {
+		return nil, err
+	}
+	term, err := valid.Text("term", r.Term, valid.MaxTerm)
+	if err != nil {
+		return nil, err
+	}
 	g := &pb.GradeEntry{
-		Student: strings.TrimSpace(r.Student),
-		Course:  strings.ToUpper(strings.TrimSpace(r.Course)),
-		Term:    strings.TrimSpace(r.Term),
+		Student: student,
+		Course:  strings.ToUpper(course),
+		Term:    term,
 		Grade:   strings.TrimSpace(r.Grade),
 		Faculty: c.Username(),
-	}
-	if g.Student == "" || g.Course == "" || g.Term == "" {
-		return nil, status.Error(codes.InvalidArgument, "student, course and term are required")
 	}
 	if !slices.Contains(validGrades, g.Grade) {
 		return nil, status.Errorf(codes.InvalidArgument, "grade must be one of %s", strings.Join(validGrades, ", "))
