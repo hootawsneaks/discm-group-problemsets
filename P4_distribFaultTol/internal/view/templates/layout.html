@@ -6,10 +6,12 @@
 {{if .User}}
   <a href="/courses">Courses</a> |
   <a href="/grades">Grades</a> |
+  <a href="/status">Node status</a> |
   {{.User.Name}} ({{.User.Role}})
   <form method="post" action="/logout" style="display:inline"><button>Logout</button></form>
 {{else}}
-  <a href="/login">Login</a>
+  <a href="/login">Login</a> |
+  <a href="/status">Node status</a>
 {{end}}
 </p>
 <hr>

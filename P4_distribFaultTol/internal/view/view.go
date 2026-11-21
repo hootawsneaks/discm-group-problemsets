@@ -1,6 +1,6 @@
-// Package view is the view node (the V and C of MVC). It serves HTML and talks
-// to the other nodes only through gRPC. If a node is down, only the pages that
-// need it show an error; everything else keeps working.
+// Package view is the view node (the V and C of MVC). It serves HTML over
+// HTTPS and talks to the other nodes only through gRPC. If a node is down,
+// only the pages that need it show an error; everything else keeps working.
 package view
 
 import (
@@ -21,6 +21,8 @@ import (
 
 	"p4/internal/authz"
 	"p4/internal/config"
+	"p4/internal/pool"
+	"p4/internal/tlsgen"
 	pb "p4/proto"
 )
 
@@ -34,6 +36,7 @@ type app struct {
 	auth   pb.AuthClient
 	course pb.CourseClient
 	grade  pb.GradeClient
+	pools  map[string]*pool.Pool
 	pages  map[string]*template.Template
 }
 
@@ -46,40 +49,54 @@ type page struct {
 }
 
 func Run(cfg *config.Config) error {
-	a := &app{cfg: cfg, pages: map[string]*template.Template{}}
-	for _, name := range []string{"login", "courses", "grades"} {
+	a := &app{cfg: cfg, pages: map[string]*template.Template{}, pools: map[string]*pool.Pool{}}
+	for _, name := range []string{"login", "courses", "grades", "status"} {
 		a.pages[name] = template.Must(template.ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
-	var err error
-	conns := map[string]*grpc.ClientConn{}
+
+	// One pool of connections per node (bonus 3). grpc.NewClient connects
+	// lazily, so the view starts even when other nodes are down, and a short
+	// backoff means a node that comes back is picked up within seconds.
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: backoff.Config{
+			BaseDelay: 200 * time.Millisecond, Multiplier: 1.6, MaxDelay: 2 * time.Second,
+		}}),
+	}
 	for name, addr := range map[string]string{"auth": cfg.AuthAddr, "course": cfg.CourseAddr, "grade": cfg.GradeAddr} {
-		// NewClient connects lazily, so the view starts even when other nodes are down.
-		// A short backoff means a node that comes back is picked up within seconds.
-		conns[name], err = grpc.NewClient(addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithConnectParams(grpc.ConnectParams{Backoff: backoff.Config{
-				BaseDelay: 200 * time.Millisecond, Multiplier: 1.6, MaxDelay: 2 * time.Second,
-			}}))
+		p, err := pool.New(addr, cfg.PoolSize, opts...)
 		if err != nil {
 			return err
 		}
+		a.pools[name] = p
+		defer p.Close()
 	}
-	a.auth = pb.NewAuthClient(conns["auth"])
-	a.course = pb.NewCourseClient(conns["course"])
-	a.grade = pb.NewGradeClient(conns["grade"])
+	a.auth = pb.NewAuthClient(a.pools["auth"])
+	a.course = pb.NewCourseClient(a.pools["course"])
+	a.grade = pb.NewGradeClient(a.pools["grade"])
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", a.home)
 	mux.HandleFunc("GET /login", a.loginForm)
 	mux.HandleFunc("POST /login", a.login)
 	mux.HandleFunc("POST /logout", a.logout)
+	mux.HandleFunc("GET /status", a.status)
 	mux.HandleFunc("GET /courses", a.requireLogin(a.courses))
 	mux.HandleFunc("POST /enroll", a.requireLogin(a.enroll))
 	mux.HandleFunc("GET /grades", a.requireLogin(a.grades))
 	mux.HandleFunc("POST /grades", a.requireLogin(a.uploadGrade))
 
-	fmt.Println("view node on http://localhost" + cfg.ViewListen)
-	return http.ListenAndServe(cfg.ViewListen, mux)
+	hosts, err := tlsgen.EnsureCert(cfg.TLSCert, cfg.TLSKey, cfg.TLSHosts)
+	if err != nil {
+		return fmt.Errorf("tls certificate: %w", err)
+	}
+	fmt.Printf("view node on %s (self-signed certificate for %v; the browser will warn once)\n",
+		browserURL(cfg.ViewListen), hosts)
+	fmt.Printf("%d gRPC connection(s) per node: auth %s, course %s, grade %s\n",
+		cfg.PoolSize, cfg.AuthAddr, cfg.CourseAddr, cfg.GradeAddr)
+	// ServeHTTPS also redirects plain http:// on this port, so typing
+	// "localhost:8080" lands on the page instead of a TLS error.
+	return tlsgen.ServeHTTPS(cfg.ViewListen, cfg.TLSCert, cfg.TLSKey, mux)
 }
 
 // ---- helpers ----
@@ -126,13 +143,19 @@ func (a *app) rpcCtx(r *http.Request) (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
+// down reports whether an error means the node could not be reached, as
+// opposed to the node answering with a refusal.
+func down(err error) bool {
+	st, _ := status.FromError(err)
+	return st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded
+}
+
 // errMsg turns a gRPC error into something to show the user.
 func errMsg(node string, err error) string {
-	st, _ := status.FromError(err)
-	switch st.Code() {
-	case codes.Unavailable, codes.DeadlineExceeded:
+	if down(err) {
 		return fmt.Sprintf("The %s node is down right now. This feature is unavailable; the rest of the site still works.", node)
 	}
+	st, _ := status.FromError(err)
 	return st.Message()
 }
 
@@ -144,6 +167,14 @@ func (a *app) render(w http.ResponseWriter, name string, p page) {
 
 func redirectMsg(w http.ResponseWriter, r *http.Request, path, msg string) {
 	http.Redirect(w, r, path+"?msg="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+// browserURL turns a listen address like ":8080" into something clickable.
+func browserURL(addr string) string {
+	if len(addr) > 0 && addr[0] == ':' {
+		return "https://localhost" + addr
+	}
+	return "https://" + addr
 }
 
 // ---- controllers ----
@@ -171,6 +202,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: cookieName, Value: res.Token, Path: "/", HttpOnly: true,
+		Secure:   true, // the view is served over HTTPS
 		SameSite: http.SameSiteLaxMode, MaxAge: int(a.cfg.TTL.Seconds()),
 	})
 	http.Redirect(w, r, "/courses", http.StatusSeeOther)
@@ -182,11 +214,12 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(authz.WithToken(r.Context(), tok), a.cfg.Timeout)
 		defer cancel()
 		if _, err := a.auth.Logout(ctx, &pb.Empty{}); err != nil {
-			// The cookie is cleared anyway; the auth node just couldn't record it.
-			msg = "Logged out (" + errMsg("auth", err) + ")"
+			// The cookie is cleared anyway, but the other nodes will keep
+			// honouring this token until it expires: say so plainly.
+			msg = "Logged out of this browser, but " + errMsg("auth", err)
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, Secure: true})
 	redirectMsg(w, r, "/login", msg)
 }
 
@@ -248,3 +281,61 @@ func (a *app) uploadGrade(w http.ResponseWriter, r *http.Request) {
 	redirectMsg(w, r, "/grades", "Grade saved.")
 }
 
+// ---- status page ----
+
+// nodeStatus is one row of the status page.
+type nodeStatus struct {
+	Name     string
+	Addr     string
+	Up       bool
+	Features string
+	Conns    int    // connections in this node's pool
+	Ready    int    // how many of them are connected right now
+	Detail   string // why it looks down
+}
+
+// status probes every node and says which features are available. It needs no
+// login, so you can see what is up before trying to log in.
+func (a *app) status(w http.ResponseWriter, r *http.Request) {
+	c, _ := a.user(r)
+	rows := []nodeStatus{{
+		Name: "view", Addr: a.cfg.ViewListen, Up: true,
+		Features: "pages and controllers (this node)",
+	}}
+
+	// A node that answers at all is up, even if it refuses the call: only
+	// Unavailable and DeadlineExceeded mean it could not be reached.
+	probes := []struct {
+		name, features string
+		call           func(context.Context) error
+	}{
+		{"auth", "login, logout, session revocation", func(ctx context.Context) error {
+			_, err := a.auth.Login(ctx, &pb.LoginRequest{})
+			return err
+		}},
+		{"course", "view courses, enroll", func(ctx context.Context) error {
+			_, err := a.course.ListCourses(ctx, &pb.Empty{})
+			return err
+		}},
+		{"grade", "view grades, upload grades", func(ctx context.Context) error {
+			_, err := a.grade.MyGrades(ctx, &pb.Empty{})
+			return err
+		}},
+	}
+	for _, probe := range probes {
+		ctx, cancel := context.WithTimeout(r.Context(), a.cfg.Timeout)
+		err := probe.call(ctx)
+		cancel()
+		p := a.pools[probe.name]
+		row := nodeStatus{
+			Name: probe.name, Addr: p.Addr(), Up: !down(err),
+			Features: probe.features, Conns: p.Size(), Ready: p.Ready(),
+		}
+		if !row.Up {
+			st, _ := status.FromError(err)
+			row.Detail = st.Code().String()
+		}
+		rows = append(rows, row)
+	}
+	a.render(w, "status", page{User: c, Msg: r.URL.Query().Get("msg"), Data: rows})
+}

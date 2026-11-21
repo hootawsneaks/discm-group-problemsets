@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Node status</h1>
+<p>Each feature lives on its own node. A node that is down takes only its own
+features with it.</p>
+<table border="1" cellpadding="4">
+  <tr><th>Node</th><th>Address</th><th>State</th><th>Features</th><th>gRPC connections</th></tr>
+  {{range .Data}}
+  <tr>
+    <td>{{.Name}}</td>
+    <td>{{.Addr}}</td>
+    {{if .Up}}
+      <td style="color:green">up</td>
+    {{else}}
+      <td style="color:red">down{{if .Detail}} ({{.Detail}}){{end}}</td>
+    {{end}}
+    <td>{{.Features}}</td>
+    <td>{{if .Conns}}{{.Ready}} of {{.Conns}} connected{{else}}&mdash;{{end}}</td>
+  </tr>
+  {{end}}
+</table>
+<p><a href="/status">Refresh</a></p>
+{{end}}
