@@ -30,6 +30,11 @@ var videoExts = map[string]bool{
 // Run starts p producer threads. Producer i uploads every video in
 // <input_dir>/p<i> to the consumer over gRPC.
 func Run(cfg config.Config) error {
+	// Checked before anything else: a missing videos/p<i> would otherwise leave
+	// that thread quietly uploading nothing while the run still looked clean.
+	if err := checkInputFolders(cfg); err != nil {
+		return err
+	}
 	conn, err := grpc.NewClient(cfg.ConsumerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
@@ -92,6 +97,31 @@ func Run(cfg config.Config) error {
 	log.Printf("done: %d accepted, %d dropped (queue full), %d duplicate, %d too large, %d failed",
 		accepted.Load(), dropped.Load(), duplicates.Load(), oversize.Load(), failed.Load())
 	return nil
+}
+
+// checkInputFolders makes sure every producer thread has a folder to read.
+// Nothing creates these: they come from setup-videos.ps1, so "producers" and
+// the folders on disk can easily disagree.
+func checkInputFolders(cfg config.Config) error {
+	var missing []string
+	for i := 1; i <= cfg.Producers; i++ {
+		dir := filepath.Join(cfg.InputDir, fmt.Sprintf("p%d", i))
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			missing = append(missing, dir)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("producers is %d, so %s expected; missing: %s (run setup-videos.ps1)",
+			cfg.Producers, folderWord(cfg.Producers), strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func folderWord(n int) string {
+	if n == 1 {
+		return "1 input folder is"
+	}
+	return fmt.Sprintf("%d input folders are", n)
 }
 
 // ensureReady returns at once while the consumer is reachable, and otherwise
