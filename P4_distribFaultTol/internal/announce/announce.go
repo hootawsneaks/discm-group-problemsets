@@ -28,6 +28,7 @@ import (
 	"p4/internal/authz"
 	"p4/internal/config"
 	"p4/internal/db"
+	"p4/internal/valid"
 	pb "p4/proto"
 )
 
@@ -204,8 +205,6 @@ func fromUnix(s int64) time.Time {
 func fromRequest(r *pb.Announcement) (Announcement, error) {
 	a := Announcement{
 		Category: strings.TrimSpace(r.Category),
-		Title:    strings.TrimSpace(r.Title),
-		Body:     strings.TrimSpace(r.Body),
 		StartsAt: fromUnix(r.StartsAt),
 		EndsAt:   fromUnix(r.EndsAt),
 		Pinned:   r.Pinned,
@@ -213,8 +212,12 @@ func fromRequest(r *pb.Announcement) (Announcement, error) {
 	if !slices.Contains(Categories, a.Category) {
 		return a, status.Errorf(codes.InvalidArgument, "category must be one of %s", strings.Join(Categories, ", "))
 	}
-	if a.Title == "" || a.Body == "" {
-		return a, status.Error(codes.InvalidArgument, "title and body are required")
+	var err error
+	if a.Title, err = valid.Text("title", r.Title, valid.MaxTitle); err != nil {
+		return a, err
+	}
+	if a.Body, err = valid.Text("body", r.Body, valid.MaxBody); err != nil {
+		return a, err
 	}
 	if !a.StartsAt.IsZero() && !a.EndsAt.IsZero() && a.EndsAt.Before(a.StartsAt) {
 		return a, status.Error(codes.InvalidArgument, "the end date is before the start date")
@@ -294,6 +297,9 @@ func (s *server) GetAnnouncement(ctx context.Context, r *pb.AnnouncementId) (*pb
 	if err != nil {
 		return nil, err
 	}
+	if _, err := valid.Text("announcement id", r.Id, valid.MaxID); err != nil {
+		return nil, err
+	}
 	var a Announcement
 	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -319,6 +325,7 @@ func (s *server) CreateAnnouncement(ctx context.Context, r *pb.Announcement) (*p
 	if err != nil {
 		return nil, err
 	}
+	// No id check here: the server generates the id on create.
 	a, err := fromRequest(r)
 	if err != nil {
 		return nil, err
@@ -337,6 +344,9 @@ func (s *server) CreateAnnouncement(ctx context.Context, r *pb.Announcement) (*p
 func (s *server) UpdateAnnouncement(ctx context.Context, r *pb.Announcement) (*pb.Announcement, error) {
 	c, err := authz.Require(ctx, authz.RoleRegistrar)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := valid.Text("announcement id", r.Id, valid.MaxID); err != nil {
 		return nil, err
 	}
 	a, err := fromRequest(r)
@@ -368,6 +378,9 @@ func (s *server) UpdateAnnouncement(ctx context.Context, r *pb.Announcement) (*p
 func (s *server) DeleteAnnouncement(ctx context.Context, r *pb.AnnouncementId) (*pb.Empty, error) {
 	c, err := authz.Require(ctx, authz.RoleRegistrar)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := valid.Text("announcement id", r.Id, valid.MaxID); err != nil {
 		return nil, err
 	}
 	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
