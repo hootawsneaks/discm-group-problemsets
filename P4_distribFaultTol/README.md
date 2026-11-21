@@ -4,7 +4,7 @@ Four nodes, each a separate process/container/VM. Every node-to-node call is gRP
 
 | Node     | Port  | Features                                   |
 |----------|-------|--------------------------------------------|
-| `view`   | 8080  | MVC views + controllers (HTML), no data    |
+| `view`   | 8080  | MVC views + controllers (HTTPS), no data   |
 | `auth`   | 50051 | login / logout, JWT issuing, session log   |
 | `course` | 50052 | list courses, enroll in open courses       |
 | `grade`  | 50053 | students view grades, faculty upload grades|
@@ -15,23 +15,13 @@ internal/view/       controllers + html templates (embedded)
 internal/auth/       auth node
 internal/course/     course node
 internal/grade/      grade node
-internal/authz/      JWT signing/verification + gRPC interceptor (shared)
+internal/authz/      JWT signing/verification, gRPC interceptor, revocation checks (shared)
+internal/pool/       gRPC connection pool (shared)
 internal/store/      per-node JSON file storage
+internal/tlsgen/     self-signed certificate for the HTTPS view
 proto/school.proto   gRPC services + generated code
+scripts/             automated fault-tolerance walkthrough
 ```
-
-## How sessions and fault tolerance work
-
-- Logging in calls `Auth.Login`, which returns an HS256 JWT (user, role, expiry). The view stores it
-  in an HttpOnly cookie and sends it as `authorization: Bearer ...` metadata on every gRPC call.
-- **Every node verifies the JWT itself** using the shared `jwt_secret`, so the session is valid on all
-  nodes without asking the auth node. If auth is down, people who are already logged in keep working;
-  only login/logout fail.
-- The auth node records every issued session (by token ID) in `data/auth.json` and marks it on logout.
-- Each node owns its own data file (`data/<node>.json`); no node reads another node's data.
-- The view connects lazily and uses a 2s per-call timeout. If a node is unreachable, only the page
-  that needs it shows "The X node is down"; the rest of the site keeps working. When the node comes back,
-  the view reconnects within a few seconds.
 
 Demo accounts (password `password`): `alice`, `bob` (students); `prof1`, `prof2` (faculty).
 Data is seeded on first start; delete `data/` to reset.
@@ -41,8 +31,17 @@ Data is seeded on first start; delete `data/` to reset.
 ```sh
 go build -o bin/p4 ./cmd/p4
 bin/p4 auth & bin/p4 course & bin/p4 grade & bin/p4 view
-# open http://localhost:8080
+# open https://localhost:8080
 ```
+
+Windows PowerShell:
+```powershell
+go build -o bin/p4.exe ./cmd/p4; Start-Process .\bin\p4.exe auth; Start-Process .\bin\p4.exe course; Start-Process .\bin\p4.exe grade; .\bin\p4.exe view
+```
+
+**The view is served over HTTPS** with a certificate the node generates and signs itself, so the
+browser warns the first time ("not secure" / "advanced → proceed"). Accept it once and the
+address bar shows HTTPS from then on. Delete `certs/` to force a new certificate.
 
 ## Run with docker compose (one machine)
 
@@ -54,21 +53,49 @@ docker compose start grade
 
 ## Run on separate VMs
 
-On every VM: clone the repo, `docker build -t p4 .`, and use the **same `jwt_secret`** in `config.json`.
-On the view VM, set `auth_addr`, `course_addr`, `grade_addr` to the other VMs' IPs. Then on each VM:
+On every VM: clone the repo, `docker build -t p4 .`, and use the **same `jwt_secret`** in
+`config.json`. On the view VM, set `auth_addr`, `course_addr`, `grade_addr` to the other VMs'
+IPs, and add the view VM's own IP to `tls_hosts` so the certificate covers the address you type
+in the browser. Then on each VM:
 
 ```sh
 docker run -p 50051:50051 -v $PWD/config.json:/app/config.json:ro -v $PWD/data:/app/data p4 auth
 docker run -p 50052:50052 -v $PWD/config.json:/app/config.json:ro -v $PWD/data:/app/data p4 course
 docker run -p 50053:50053 -v $PWD/config.json:/app/config.json:ro -v $PWD/data:/app/data p4 grade
-docker run -p 8080:8080   -v $PWD/config.json:/app/config.json:ro p4 view
+docker run -p 8080:8080   -v $PWD/config.json:/app/config.json:ro -v $PWD/certs:/app/certs p4 view
 ```
 
-Open those ports in each VM's firewall. Shutting down any one VM disables only that node's features.
+## Configuration
+
+`config.json`, with `P4_AUTH_ADDR`, `P4_COURSE_ADDR` and `P4_GRADE_ADDR` overriding the node
+addresses (used by `docker-compose.yml`):
+
+- `view_listen`, `auth_addr`, `course_addr`, `grade_addr`: where each node lives.
+- `jwt_secret`: **must be the same on every node.** Change it from the default for anything real.
+- `token_ttl`: how long a session lasts (`1h`).
+- `rpc_timeout`: how long the view waits for a node before calling it down (`2s`).
+- `tls_cert`, `tls_key`, `tls_hosts`: the view's certificate, generated on first start if
+  missing. `tls_hosts` adds extra names/IPs, e.g. `["192.168.56.10"]`.
+- `pool_size`: gRPC connections the view keeps per node (bonus 3).
+- `revocation_cache`: how long the course and grade nodes reuse their last "this session is
+  live" answer before asking auth again. `0s` (the default) means ask every time, so a logout is
+  honoured immediately everywhere.
+- `revocation_timeout`: how long they wait for that answer (`500ms`). Must be shorter than
+  `rpc_timeout`.
+- `data_dir`: where that node keeps its own `<role>.json`.
 
 ## Regenerating gRPC code
 
+With `protoc`:
 ```sh
 protoc --go_out=. --go_opt=paths=source_relative \
        --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/school.proto
+```
+
+Or without installing `protoc`, using the `buf.yaml` / `buf.gen.yaml` in this folder:
+```sh
+go install github.com/bufbuild/buf/cmd/buf@latest
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+buf generate
 ```
