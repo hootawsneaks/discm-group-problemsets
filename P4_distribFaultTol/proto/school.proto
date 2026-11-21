@@ -6,6 +6,37 @@ option go_package = "p4/proto";
 
 message Empty {}
 
+// ---------- Every node that keeps data ----------
+// Health is served by auth, course, grade and announce without a login, so the
+// status page can show whether the node is up and how its database
+// connection pool looks.
+service Health {
+  rpc DBStats(Empty) returns (DBStatus);
+}
+
+message DBStatus {
+  string database = 1;     // this node's own database
+  string connected_to = 2; // the server the pool is using (the primary)
+  string error = 3;        // why the database could not be used, if it couldn't
+  // database/sql connection pool
+  int32 max_open = 4;
+  int32 open = 5;
+  int32 in_use = 6;
+  int32 idle = 7;
+  int64 wait_count = 8;    // requests that had to wait for a free connection
+  int64 wait_ms = 9;
+  int64 max_idle_closed = 10;
+  int64 max_idle_time_closed = 11;
+  int64 max_lifetime_closed = 12;
+  repeated DBHost hosts = 13; // every database server and its role
+}
+
+message DBHost {
+  string addr = 1;
+  string role = 2; // primary | standby (replica) | down
+  string error = 3;
+}
+
 // ---------- Auth node ----------
 service Auth {
   rpc Login(LoginRequest) returns (LoginReply);

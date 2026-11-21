@@ -57,6 +57,207 @@ func (*Empty) Descriptor() ([]byte, []int) {
 	return file_proto_school_proto_rawDescGZIP(), []int{0}
 }
 
+type DBStatus struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Database    string                 `protobuf:"bytes,1,opt,name=database,proto3" json:"database,omitempty"`                          // this node's own database
+	ConnectedTo string                 `protobuf:"bytes,2,opt,name=connected_to,json=connectedTo,proto3" json:"connected_to,omitempty"` // the server the pool is using (the primary)
+	Error       string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`                                // why the database could not be used, if it couldn't
+	// database/sql connection pool
+	MaxOpen           int32     `protobuf:"varint,4,opt,name=max_open,json=maxOpen,proto3" json:"max_open,omitempty"`
+	Open              int32     `protobuf:"varint,5,opt,name=open,proto3" json:"open,omitempty"`
+	InUse             int32     `protobuf:"varint,6,opt,name=in_use,json=inUse,proto3" json:"in_use,omitempty"`
+	Idle              int32     `protobuf:"varint,7,opt,name=idle,proto3" json:"idle,omitempty"`
+	WaitCount         int64     `protobuf:"varint,8,opt,name=wait_count,json=waitCount,proto3" json:"wait_count,omitempty"` // requests that had to wait for a free connection
+	WaitMs            int64     `protobuf:"varint,9,opt,name=wait_ms,json=waitMs,proto3" json:"wait_ms,omitempty"`
+	MaxIdleClosed     int64     `protobuf:"varint,10,opt,name=max_idle_closed,json=maxIdleClosed,proto3" json:"max_idle_closed,omitempty"`
+	MaxIdleTimeClosed int64     `protobuf:"varint,11,opt,name=max_idle_time_closed,json=maxIdleTimeClosed,proto3" json:"max_idle_time_closed,omitempty"`
+	MaxLifetimeClosed int64     `protobuf:"varint,12,opt,name=max_lifetime_closed,json=maxLifetimeClosed,proto3" json:"max_lifetime_closed,omitempty"`
+	Hosts             []*DBHost `protobuf:"bytes,13,rep,name=hosts,proto3" json:"hosts,omitempty"` // every database server and its role
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *DBStatus) Reset() {
+	*x = DBStatus{}
+	mi := &file_proto_school_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DBStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DBStatus) ProtoMessage() {}
+
+func (x *DBStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_school_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DBStatus.ProtoReflect.Descriptor instead.
+func (*DBStatus) Descriptor() ([]byte, []int) {
+	return file_proto_school_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DBStatus) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *DBStatus) GetConnectedTo() string {
+	if x != nil {
+		return x.ConnectedTo
+	}
+	return ""
+}
+
+func (x *DBStatus) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *DBStatus) GetMaxOpen() int32 {
+	if x != nil {
+		return x.MaxOpen
+	}
+	return 0
+}
+
+func (x *DBStatus) GetOpen() int32 {
+	if x != nil {
+		return x.Open
+	}
+	return 0
+}
+
+func (x *DBStatus) GetInUse() int32 {
+	if x != nil {
+		return x.InUse
+	}
+	return 0
+}
+
+func (x *DBStatus) GetIdle() int32 {
+	if x != nil {
+		return x.Idle
+	}
+	return 0
+}
+
+func (x *DBStatus) GetWaitCount() int64 {
+	if x != nil {
+		return x.WaitCount
+	}
+	return 0
+}
+
+func (x *DBStatus) GetWaitMs() int64 {
+	if x != nil {
+		return x.WaitMs
+	}
+	return 0
+}
+
+func (x *DBStatus) GetMaxIdleClosed() int64 {
+	if x != nil {
+		return x.MaxIdleClosed
+	}
+	return 0
+}
+
+func (x *DBStatus) GetMaxIdleTimeClosed() int64 {
+	if x != nil {
+		return x.MaxIdleTimeClosed
+	}
+	return 0
+}
+
+func (x *DBStatus) GetMaxLifetimeClosed() int64 {
+	if x != nil {
+		return x.MaxLifetimeClosed
+	}
+	return 0
+}
+
+func (x *DBStatus) GetHosts() []*DBHost {
+	if x != nil {
+		return x.Hosts
+	}
+	return nil
+}
+
+type DBHost struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Addr          string                 `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"` // primary | standby (replica) | down
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DBHost) Reset() {
+	*x = DBHost{}
+	mi := &file_proto_school_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DBHost) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DBHost) ProtoMessage() {}
+
+func (x *DBHost) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_school_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DBHost.ProtoReflect.Descriptor instead.
+func (*DBHost) Descriptor() ([]byte, []int) {
+	return file_proto_school_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DBHost) GetAddr() string {
+	if x != nil {
+		return x.Addr
+	}
+	return ""
+}
+
+func (x *DBHost) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *DBHost) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type SessionQuery struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Jti           string                 `protobuf:"bytes,1,opt,name=jti,proto3" json:"jti,omitempty"` // the JWT's token id
@@ -66,7 +267,7 @@ type SessionQuery struct {
 
 func (x *SessionQuery) Reset() {
 	*x = SessionQuery{}
-	mi := &file_proto_school_proto_msgTypes[1]
+	mi := &file_proto_school_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -78,7 +279,7 @@ func (x *SessionQuery) String() string {
 func (*SessionQuery) ProtoMessage() {}
 
 func (x *SessionQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[1]
+	mi := &file_proto_school_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -91,7 +292,7 @@ func (x *SessionQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionQuery.ProtoReflect.Descriptor instead.
 func (*SessionQuery) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{1}
+	return file_proto_school_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SessionQuery) GetJti() string {
@@ -111,7 +312,7 @@ type SessionState struct {
 
 func (x *SessionState) Reset() {
 	*x = SessionState{}
-	mi := &file_proto_school_proto_msgTypes[2]
+	mi := &file_proto_school_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -123,7 +324,7 @@ func (x *SessionState) String() string {
 func (*SessionState) ProtoMessage() {}
 
 func (x *SessionState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[2]
+	mi := &file_proto_school_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -136,7 +337,7 @@ func (x *SessionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionState.ProtoReflect.Descriptor instead.
 func (*SessionState) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{2}
+	return file_proto_school_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *SessionState) GetRevoked() bool {
@@ -163,7 +364,7 @@ type LoginRequest struct {
 
 func (x *LoginRequest) Reset() {
 	*x = LoginRequest{}
-	mi := &file_proto_school_proto_msgTypes[3]
+	mi := &file_proto_school_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -175,7 +376,7 @@ func (x *LoginRequest) String() string {
 func (*LoginRequest) ProtoMessage() {}
 
 func (x *LoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[3]
+	mi := &file_proto_school_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -188,7 +389,7 @@ func (x *LoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginRequest.ProtoReflect.Descriptor instead.
 func (*LoginRequest) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{3}
+	return file_proto_school_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *LoginRequest) GetUsername() string {
@@ -217,7 +418,7 @@ type LoginReply struct {
 
 func (x *LoginReply) Reset() {
 	*x = LoginReply{}
-	mi := &file_proto_school_proto_msgTypes[4]
+	mi := &file_proto_school_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -229,7 +430,7 @@ func (x *LoginReply) String() string {
 func (*LoginReply) ProtoMessage() {}
 
 func (x *LoginReply) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[4]
+	mi := &file_proto_school_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -242,7 +443,7 @@ func (x *LoginReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginReply.ProtoReflect.Descriptor instead.
 func (*LoginReply) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{4}
+	return file_proto_school_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *LoginReply) GetToken() string {
@@ -288,7 +489,7 @@ type CourseInfo struct {
 
 func (x *CourseInfo) Reset() {
 	*x = CourseInfo{}
-	mi := &file_proto_school_proto_msgTypes[5]
+	mi := &file_proto_school_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -300,7 +501,7 @@ func (x *CourseInfo) String() string {
 func (*CourseInfo) ProtoMessage() {}
 
 func (x *CourseInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[5]
+	mi := &file_proto_school_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -313,7 +514,7 @@ func (x *CourseInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CourseInfo.ProtoReflect.Descriptor instead.
 func (*CourseInfo) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{5}
+	return file_proto_school_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CourseInfo) GetCode() string {
@@ -374,7 +575,7 @@ type CourseList struct {
 
 func (x *CourseList) Reset() {
 	*x = CourseList{}
-	mi := &file_proto_school_proto_msgTypes[6]
+	mi := &file_proto_school_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -386,7 +587,7 @@ func (x *CourseList) String() string {
 func (*CourseList) ProtoMessage() {}
 
 func (x *CourseList) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[6]
+	mi := &file_proto_school_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -399,7 +600,7 @@ func (x *CourseList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CourseList.ProtoReflect.Descriptor instead.
 func (*CourseList) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{6}
+	return file_proto_school_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CourseList) GetCourses() []*CourseInfo {
@@ -418,7 +619,7 @@ type EnrollRequest struct {
 
 func (x *EnrollRequest) Reset() {
 	*x = EnrollRequest{}
-	mi := &file_proto_school_proto_msgTypes[7]
+	mi := &file_proto_school_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -430,7 +631,7 @@ func (x *EnrollRequest) String() string {
 func (*EnrollRequest) ProtoMessage() {}
 
 func (x *EnrollRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[7]
+	mi := &file_proto_school_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -443,7 +644,7 @@ func (x *EnrollRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollRequest.ProtoReflect.Descriptor instead.
 func (*EnrollRequest) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{7}
+	return file_proto_school_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *EnrollRequest) GetCode() string {
@@ -466,7 +667,7 @@ type GradeEntry struct {
 
 func (x *GradeEntry) Reset() {
 	*x = GradeEntry{}
-	mi := &file_proto_school_proto_msgTypes[8]
+	mi := &file_proto_school_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -478,7 +679,7 @@ func (x *GradeEntry) String() string {
 func (*GradeEntry) ProtoMessage() {}
 
 func (x *GradeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[8]
+	mi := &file_proto_school_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -491,7 +692,7 @@ func (x *GradeEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GradeEntry.ProtoReflect.Descriptor instead.
 func (*GradeEntry) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{8}
+	return file_proto_school_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GradeEntry) GetStudent() string {
@@ -538,7 +739,7 @@ type GradeList struct {
 
 func (x *GradeList) Reset() {
 	*x = GradeList{}
-	mi := &file_proto_school_proto_msgTypes[9]
+	mi := &file_proto_school_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +751,7 @@ func (x *GradeList) String() string {
 func (*GradeList) ProtoMessage() {}
 
 func (x *GradeList) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[9]
+	mi := &file_proto_school_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +764,7 @@ func (x *GradeList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GradeList.ProtoReflect.Descriptor instead.
 func (*GradeList) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{9}
+	return file_proto_school_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GradeList) GetGrades() []*GradeEntry {
@@ -593,7 +794,7 @@ type Announcement struct {
 
 func (x *Announcement) Reset() {
 	*x = Announcement{}
-	mi := &file_proto_school_proto_msgTypes[10]
+	mi := &file_proto_school_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -605,7 +806,7 @@ func (x *Announcement) String() string {
 func (*Announcement) ProtoMessage() {}
 
 func (x *Announcement) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[10]
+	mi := &file_proto_school_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -618,7 +819,7 @@ func (x *Announcement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Announcement.ProtoReflect.Descriptor instead.
 func (*Announcement) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{10}
+	return file_proto_school_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Announcement) GetId() string {
@@ -714,7 +915,7 @@ type AnnouncementId struct {
 
 func (x *AnnouncementId) Reset() {
 	*x = AnnouncementId{}
-	mi := &file_proto_school_proto_msgTypes[11]
+	mi := &file_proto_school_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -726,7 +927,7 @@ func (x *AnnouncementId) String() string {
 func (*AnnouncementId) ProtoMessage() {}
 
 func (x *AnnouncementId) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[11]
+	mi := &file_proto_school_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -739,7 +940,7 @@ func (x *AnnouncementId) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnouncementId.ProtoReflect.Descriptor instead.
 func (*AnnouncementId) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{11}
+	return file_proto_school_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AnnouncementId) GetId() string {
@@ -758,7 +959,7 @@ type AnnouncementList struct {
 
 func (x *AnnouncementList) Reset() {
 	*x = AnnouncementList{}
-	mi := &file_proto_school_proto_msgTypes[12]
+	mi := &file_proto_school_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +971,7 @@ func (x *AnnouncementList) String() string {
 func (*AnnouncementList) ProtoMessage() {}
 
 func (x *AnnouncementList) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_school_proto_msgTypes[12]
+	mi := &file_proto_school_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +984,7 @@ func (x *AnnouncementList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnouncementList.ProtoReflect.Descriptor instead.
 func (*AnnouncementList) Descriptor() ([]byte, []int) {
-	return file_proto_school_proto_rawDescGZIP(), []int{12}
+	return file_proto_school_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AnnouncementList) GetAnnouncements() []*Announcement {
@@ -798,7 +999,27 @@ var File_proto_school_proto protoreflect.FileDescriptor
 const file_proto_school_proto_rawDesc = "" +
 	"\n" +
 	"\x12proto/school.proto\x12\x06school\"\a\n" +
-	"\x05Empty\" \n" +
+	"\x05Empty\"\xa0\x03\n" +
+	"\bDBStatus\x12\x1a\n" +
+	"\bdatabase\x18\x01 \x01(\tR\bdatabase\x12!\n" +
+	"\fconnected_to\x18\x02 \x01(\tR\vconnectedTo\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x19\n" +
+	"\bmax_open\x18\x04 \x01(\x05R\amaxOpen\x12\x12\n" +
+	"\x04open\x18\x05 \x01(\x05R\x04open\x12\x15\n" +
+	"\x06in_use\x18\x06 \x01(\x05R\x05inUse\x12\x12\n" +
+	"\x04idle\x18\a \x01(\x05R\x04idle\x12\x1d\n" +
+	"\n" +
+	"wait_count\x18\b \x01(\x03R\twaitCount\x12\x17\n" +
+	"\await_ms\x18\t \x01(\x03R\x06waitMs\x12&\n" +
+	"\x0fmax_idle_closed\x18\n" +
+	" \x01(\x03R\rmaxIdleClosed\x12/\n" +
+	"\x14max_idle_time_closed\x18\v \x01(\x03R\x11maxIdleTimeClosed\x12.\n" +
+	"\x13max_lifetime_closed\x18\f \x01(\x03R\x11maxLifetimeClosed\x12$\n" +
+	"\x05hosts\x18\r \x03(\v2\x0e.school.DBHostR\x05hosts\"F\n" +
+	"\x06DBHost\x12\x12\n" +
+	"\x04addr\x18\x01 \x01(\tR\x04addr\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\" \n" +
 	"\fSessionQuery\x12\x10\n" +
 	"\x03jti\x18\x01 \x01(\tR\x03jti\">\n" +
 	"\fSessionState\x12\x18\n" +
@@ -857,7 +1078,9 @@ const file_proto_school_proto_rawDesc = "" +
 	"\x0eAnnouncementId\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"N\n" +
 	"\x10AnnouncementList\x12:\n" +
-	"\rannouncements\x18\x01 \x03(\v2\x14.school.AnnouncementR\rannouncements2\x9e\x01\n" +
+	"\rannouncements\x18\x01 \x03(\v2\x14.school.AnnouncementR\rannouncements24\n" +
+	"\x06Health\x12*\n" +
+	"\aDBStats\x12\r.school.Empty\x1a\x10.school.DBStatus2\x9e\x01\n" +
 	"\x04Auth\x121\n" +
 	"\x05Login\x12\x14.school.LoginRequest\x1a\x12.school.LoginReply\x12&\n" +
 	"\x06Logout\x12\r.school.Empty\x1a\r.school.Empty\x12;\n" +
@@ -890,59 +1113,64 @@ func file_proto_school_proto_rawDescGZIP() []byte {
 	return file_proto_school_proto_rawDescData
 }
 
-var file_proto_school_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_proto_school_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_proto_school_proto_goTypes = []any{
 	(*Empty)(nil),            // 0: school.Empty
-	(*SessionQuery)(nil),     // 1: school.SessionQuery
-	(*SessionState)(nil),     // 2: school.SessionState
-	(*LoginRequest)(nil),     // 3: school.LoginRequest
-	(*LoginReply)(nil),       // 4: school.LoginReply
-	(*CourseInfo)(nil),       // 5: school.CourseInfo
-	(*CourseList)(nil),       // 6: school.CourseList
-	(*EnrollRequest)(nil),    // 7: school.EnrollRequest
-	(*GradeEntry)(nil),       // 8: school.GradeEntry
-	(*GradeList)(nil),        // 9: school.GradeList
-	(*Announcement)(nil),     // 10: school.Announcement
-	(*AnnouncementId)(nil),   // 11: school.AnnouncementId
-	(*AnnouncementList)(nil), // 12: school.AnnouncementList
+	(*DBStatus)(nil),         // 1: school.DBStatus
+	(*DBHost)(nil),           // 2: school.DBHost
+	(*SessionQuery)(nil),     // 3: school.SessionQuery
+	(*SessionState)(nil),     // 4: school.SessionState
+	(*LoginRequest)(nil),     // 5: school.LoginRequest
+	(*LoginReply)(nil),       // 6: school.LoginReply
+	(*CourseInfo)(nil),       // 7: school.CourseInfo
+	(*CourseList)(nil),       // 8: school.CourseList
+	(*EnrollRequest)(nil),    // 9: school.EnrollRequest
+	(*GradeEntry)(nil),       // 10: school.GradeEntry
+	(*GradeList)(nil),        // 11: school.GradeList
+	(*Announcement)(nil),     // 12: school.Announcement
+	(*AnnouncementId)(nil),   // 13: school.AnnouncementId
+	(*AnnouncementList)(nil), // 14: school.AnnouncementList
 }
 var file_proto_school_proto_depIdxs = []int32{
-	5,  // 0: school.CourseList.courses:type_name -> school.CourseInfo
-	8,  // 1: school.GradeList.grades:type_name -> school.GradeEntry
-	10, // 2: school.AnnouncementList.announcements:type_name -> school.Announcement
-	3,  // 3: school.Auth.Login:input_type -> school.LoginRequest
-	0,  // 4: school.Auth.Logout:input_type -> school.Empty
-	1,  // 5: school.Auth.SessionStatus:input_type -> school.SessionQuery
-	0,  // 6: school.Course.ListCourses:input_type -> school.Empty
-	7,  // 7: school.Course.Enroll:input_type -> school.EnrollRequest
-	7,  // 8: school.Course.Drop:input_type -> school.EnrollRequest
-	0,  // 9: school.Grade.MyGrades:input_type -> school.Empty
-	0,  // 10: school.Grade.UploadedGrades:input_type -> school.Empty
-	8,  // 11: school.Grade.UploadGrade:input_type -> school.GradeEntry
-	0,  // 12: school.Announce.ListAnnouncements:input_type -> school.Empty
-	11, // 13: school.Announce.GetAnnouncement:input_type -> school.AnnouncementId
-	10, // 14: school.Announce.CreateAnnouncement:input_type -> school.Announcement
-	10, // 15: school.Announce.UpdateAnnouncement:input_type -> school.Announcement
-	11, // 16: school.Announce.DeleteAnnouncement:input_type -> school.AnnouncementId
-	4,  // 17: school.Auth.Login:output_type -> school.LoginReply
-	0,  // 18: school.Auth.Logout:output_type -> school.Empty
-	2,  // 19: school.Auth.SessionStatus:output_type -> school.SessionState
-	6,  // 20: school.Course.ListCourses:output_type -> school.CourseList
-	0,  // 21: school.Course.Enroll:output_type -> school.Empty
-	0,  // 22: school.Course.Drop:output_type -> school.Empty
-	9,  // 23: school.Grade.MyGrades:output_type -> school.GradeList
-	9,  // 24: school.Grade.UploadedGrades:output_type -> school.GradeList
-	0,  // 25: school.Grade.UploadGrade:output_type -> school.Empty
-	12, // 26: school.Announce.ListAnnouncements:output_type -> school.AnnouncementList
-	10, // 27: school.Announce.GetAnnouncement:output_type -> school.Announcement
-	10, // 28: school.Announce.CreateAnnouncement:output_type -> school.Announcement
-	10, // 29: school.Announce.UpdateAnnouncement:output_type -> school.Announcement
-	0,  // 30: school.Announce.DeleteAnnouncement:output_type -> school.Empty
-	17, // [17:31] is the sub-list for method output_type
-	3,  // [3:17] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	2,  // 0: school.DBStatus.hosts:type_name -> school.DBHost
+	7,  // 1: school.CourseList.courses:type_name -> school.CourseInfo
+	10, // 2: school.GradeList.grades:type_name -> school.GradeEntry
+	12, // 3: school.AnnouncementList.announcements:type_name -> school.Announcement
+	0,  // 4: school.Health.DBStats:input_type -> school.Empty
+	5,  // 5: school.Auth.Login:input_type -> school.LoginRequest
+	0,  // 6: school.Auth.Logout:input_type -> school.Empty
+	3,  // 7: school.Auth.SessionStatus:input_type -> school.SessionQuery
+	0,  // 8: school.Course.ListCourses:input_type -> school.Empty
+	9,  // 9: school.Course.Enroll:input_type -> school.EnrollRequest
+	9,  // 10: school.Course.Drop:input_type -> school.EnrollRequest
+	0,  // 11: school.Grade.MyGrades:input_type -> school.Empty
+	0,  // 12: school.Grade.UploadedGrades:input_type -> school.Empty
+	10, // 13: school.Grade.UploadGrade:input_type -> school.GradeEntry
+	0,  // 14: school.Announce.ListAnnouncements:input_type -> school.Empty
+	13, // 15: school.Announce.GetAnnouncement:input_type -> school.AnnouncementId
+	12, // 16: school.Announce.CreateAnnouncement:input_type -> school.Announcement
+	12, // 17: school.Announce.UpdateAnnouncement:input_type -> school.Announcement
+	13, // 18: school.Announce.DeleteAnnouncement:input_type -> school.AnnouncementId
+	1,  // 19: school.Health.DBStats:output_type -> school.DBStatus
+	6,  // 20: school.Auth.Login:output_type -> school.LoginReply
+	0,  // 21: school.Auth.Logout:output_type -> school.Empty
+	4,  // 22: school.Auth.SessionStatus:output_type -> school.SessionState
+	8,  // 23: school.Course.ListCourses:output_type -> school.CourseList
+	0,  // 24: school.Course.Enroll:output_type -> school.Empty
+	0,  // 25: school.Course.Drop:output_type -> school.Empty
+	11, // 26: school.Grade.MyGrades:output_type -> school.GradeList
+	11, // 27: school.Grade.UploadedGrades:output_type -> school.GradeList
+	0,  // 28: school.Grade.UploadGrade:output_type -> school.Empty
+	14, // 29: school.Announce.ListAnnouncements:output_type -> school.AnnouncementList
+	12, // 30: school.Announce.GetAnnouncement:output_type -> school.Announcement
+	12, // 31: school.Announce.CreateAnnouncement:output_type -> school.Announcement
+	12, // 32: school.Announce.UpdateAnnouncement:output_type -> school.Announcement
+	0,  // 33: school.Announce.DeleteAnnouncement:output_type -> school.Empty
+	19, // [19:34] is the sub-list for method output_type
+	4,  // [4:19] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_school_proto_init() }
@@ -956,9 +1184,9 @@ func file_proto_school_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_school_proto_rawDesc), len(file_proto_school_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_proto_school_proto_goTypes,
 		DependencyIndexes: file_proto_school_proto_depIdxs,

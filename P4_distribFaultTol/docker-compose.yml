@@ -3,27 +3,58 @@
 # find each other by IP, so the connectivity between containers is configured
 # rather than inherited:
 #   view = 172.29.0.10, auth = .11, course = .12, grade = .13, announce = .14
-#   on p4net.
+#   database servers: pg1 = .21 (starts as primary), pg2 = .22 (starts as replica)
 # Take a node down with e.g. `docker compose stop grade`; only grade pages break.
+# Take a database server down with `docker compose stop pg1`; nothing breaks.
 # For separate VMs, run one service per VM (see README.md).
 x-node: &node
-  build: .
   image: p4
+  # Only the view builds the image; the other nodes reuse it. (If every node
+  # built it, parallel builds of the same tag collide.)
+  pull_policy: never
   restart: "no"
   # The nodes don't trap SIGTERM, so without this `docker compose stop <node>`
   # waits the default 10s before killing it, which makes the fault-tolerance
-  # demo drag. Nothing is lost: each node's data file is written with a
-  # temp-file-and-rename, so it is never half-written.
+  # demo drag. Nothing is lost: all data is in the database, and an
+  # interrupted transaction is rolled back.
   stop_grace_period: 2s
+  volumes:
+    - ./config.json:/app/config.json:ro
   environment:
     P4_AUTH_ADDR: 172.29.0.11:50051
     P4_COURSE_ADDR: 172.29.0.12:50052
     P4_GRADE_ADDR: 172.29.0.13:50053
     P4_ANNOUNCE_ADDR: 172.29.0.14:50054
+    # Every database server. Each node only uses the one that takes writes.
+    P4_DB_HOSTS: 172.29.0.21:5432,172.29.0.22:5432
+
+# The replicated database: PostgreSQL with streaming replication, managed by
+# repmgr. repmgrd on the replica watches the primary and promotes the replica
+# if the primary stops answering. A primary that comes back rejoins as a
+# replica of the new one (pg_rewind brings it in line first).
+x-pg: &pg
+  image: bitnamilegacy/postgresql-repmgr:17
+  restart: "no"
+  volumes:
+    - ./db-init:/docker-entrypoint-initdb.d:ro
+  environment: &pgenv
+    POSTGRESQL_PASSWORD: p4-admin-password # the postgres superuser
+    REPMGR_PASSWORD: p4-repmgr-password
+    REPMGR_PRIMARY_HOST: 172.29.0.21       # who starts as primary on first boot
+    REPMGR_PARTNER_NODES: 172.29.0.21,172.29.0.22
+    REPMGR_USE_PGREWIND: "yes"
+    # Declare the primary dead after 2 failed reconnects, 1s apart (the
+    # defaults are 3 x 5s, which leaves writes failing for ~20s).
+    REPMGR_CONNECT_TIMEOUT: 1
+    REPMGR_RECONNECT_ATTEMPTS: 2
+    REPMGR_RECONNECT_INTERVAL: 1
+    REPMGR_MASTER_RESPONSE_TIMEOUT: 10
 
 services:
   view:
     <<: *node
+    build: .
+    pull_policy: build
     command: ["view"]
     networks:
       p4net:
@@ -40,28 +71,18 @@ services:
     networks:
       p4net:
         ipv4_address: 172.29.0.11
-    volumes:
-      - ./config.json:/app/config.json:ro
-      # Each node gets its own data folder: no node can read another's data.
-      - ./data/auth:/app/data
   course:
     <<: *node
     command: ["course"]
     networks:
       p4net:
         ipv4_address: 172.29.0.12
-    volumes:
-      - ./config.json:/app/config.json:ro
-      - ./data/course:/app/data
   grade:
     <<: *node
     command: ["grade"]
     networks:
       p4net:
         ipv4_address: 172.29.0.13
-    volumes:
-      - ./config.json:/app/config.json:ro
-      - ./data/grade:/app/data
   # The extra feature on its own node: registrar announcements.
   announce:
     <<: *node
@@ -69,9 +90,43 @@ services:
     networks:
       p4net:
         ipv4_address: 172.29.0.14
+
+  pg1:
+    <<: *pg
+    environment:
+      <<: *pgenv
+      REPMGR_NODE_ID: 1
+      REPMGR_NODE_NAME: pg-1 # repmgr requires a name ending in -<number>
+      REPMGR_NODE_NETWORK_NAME: 172.29.0.21
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.21
+    # Exposed on the host only so the nodes can also be run outside Docker
+    # (config.json's db_hosts point here).
+    ports: ["5441:5432"]
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./data/announce:/app/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+      # Named volumes, not ./data folders: PostgreSQL refuses a data
+      # directory with the loose permissions a Windows bind mount has.
+      - pg1-data:/bitnami/postgresql
+  pg2:
+    <<: *pg
+    environment:
+      <<: *pgenv
+      REPMGR_NODE_ID: 2
+      REPMGR_NODE_NAME: pg-2
+      REPMGR_NODE_NETWORK_NAME: 172.29.0.22
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.22
+    ports: ["5442:5432"]
+    volumes:
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+      - pg2-data:/bitnami/postgresql
+
+volumes:
+  pg1-data:
+  pg2-data:
 
 networks:
   p4net:

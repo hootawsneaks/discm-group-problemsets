@@ -19,6 +19,118 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	Health_DBStats_FullMethodName = "/school.Health/DBStats"
+)
+
+// HealthClient is the client API for Health service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ---------- Every node that keeps data ----------
+// Health is served by auth, course, grade and announce without a login, so the
+// status page can show whether the node is up and how its database
+// connection pool looks.
+type HealthClient interface {
+	DBStats(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*DBStatus, error)
+}
+
+type healthClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewHealthClient(cc grpc.ClientConnInterface) HealthClient {
+	return &healthClient{cc}
+}
+
+func (c *healthClient) DBStats(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*DBStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DBStatus)
+	err := c.cc.Invoke(ctx, Health_DBStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// HealthServer is the server API for Health service.
+// All implementations must embed UnimplementedHealthServer
+// for forward compatibility.
+//
+// ---------- Every node that keeps data ----------
+// Health is served by auth, course, grade and announce without a login, so the
+// status page can show whether the node is up and how its database
+// connection pool looks.
+type HealthServer interface {
+	DBStats(context.Context, *Empty) (*DBStatus, error)
+	mustEmbedUnimplementedHealthServer()
+}
+
+// UnimplementedHealthServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedHealthServer struct{}
+
+func (UnimplementedHealthServer) DBStats(context.Context, *Empty) (*DBStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method DBStats not implemented")
+}
+func (UnimplementedHealthServer) mustEmbedUnimplementedHealthServer() {}
+func (UnimplementedHealthServer) testEmbeddedByValue()                {}
+
+// UnsafeHealthServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to HealthServer will
+// result in compilation errors.
+type UnsafeHealthServer interface {
+	mustEmbedUnimplementedHealthServer()
+}
+
+func RegisterHealthServer(s grpc.ServiceRegistrar, srv HealthServer) {
+	// If the following call panics, it indicates UnimplementedHealthServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Health_ServiceDesc, srv)
+}
+
+func _Health_DBStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HealthServer).DBStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Health_DBStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HealthServer).DBStats(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Health_ServiceDesc is the grpc.ServiceDesc for Health service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Health_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "school.Health",
+	HandlerType: (*HealthServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "DBStats",
+			Handler:    _Health_DBStats_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/school.proto",
+}
+
+const (
 	Auth_Login_FullMethodName         = "/school.Auth/Login"
 	Auth_Logout_FullMethodName        = "/school.Auth/Logout"
 	Auth_SessionStatus_FullMethodName = "/school.Auth/SessionStatus"

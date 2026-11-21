@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -171,6 +173,12 @@ func down(err error) bool {
 
 // errMsg turns a gRPC error into something to show the user.
 func errMsg(node string, err error) string {
+	if st, _ := status.FromError(err); st.Code() == codes.Unavailable &&
+		strings.HasPrefix(st.Message(), "database unreachable") {
+		// The node answered; it is its database that didn't.
+		return fmt.Sprintf("The %s node is up but can't reach its database right now. If a database "+
+			"server just went down, the replica takes over within seconds: try again shortly.", node)
+	}
 	if down(err) {
 		return fmt.Sprintf("The %s node is down right now. This feature is unavailable; the rest of the site still works.", node)
 	}
@@ -328,57 +336,56 @@ type nodeStatus struct {
 	Addr     string
 	Up       bool
 	Features string
-	Conns    int    // connections in this node's pool
+	Conns    int    // gRPC connections in this node's pool
 	Ready    int    // how many of them are connected right now
 	Detail   string // why it looks down
+	DB       *pb.DBStatus
 }
 
-// status probes every node and says which features are available. It needs no
-// login, so you can see what is up before trying to log in.
+type statusPage struct {
+	Nodes   []nodeStatus
+	DBHosts []*pb.DBHost // every database server and its role, as a node sees it
+}
+
+// status asks every node for its health and database pool, at the same time,
+// and says which features are available. It needs no login, so you can see
+// what is up before trying to log in.
 func (a *app) status(w http.ResponseWriter, r *http.Request) {
 	c, _ := a.user(r)
-	rows := []nodeStatus{{
-		Name: "view", Addr: a.cfg.ViewListen, Up: true,
-		Features: "pages and controllers (this node)",
-	}}
+	nodes := []nodeStatus{
+		{Name: "auth", Features: "login, logout, session revocation"},
+		{Name: "course", Features: "view courses, enroll, drop"},
+		{Name: "grade", Features: "view grades, upload grades"},
+		{Name: "announce", Features: "registrar announcements (create, read, edit, delete)"},
+	}
+	var wg sync.WaitGroup
+	for i := range nodes {
+		n := &nodes[i]
+		p := a.pools[n.Name]
+		wg.Go(func() {
+			ctx, cancel := context.WithTimeout(r.Context(), a.cfg.Timeout)
+			defer cancel()
+			st, err := pb.NewHealthClient(p).DBStats(ctx, &pb.Empty{})
+			n.Addr, n.Conns, n.Ready = p.Addr(), p.Size(), p.Ready()
+			n.Up = !down(err)
+			if err != nil {
+				s, _ := status.FromError(err)
+				n.Detail = s.Code().String()
+				return
+			}
+			n.DB = st
+		})
+	}
+	wg.Wait()
 
-	// A node that answers at all is up, even if it refuses the call: only
-	// Unavailable and DeadlineExceeded mean it could not be reached.
-	probes := []struct {
-		name, features string
-		call           func(context.Context) error
-	}{
-		{"auth", "login, logout, session revocation", func(ctx context.Context) error {
-			_, err := a.auth.Login(ctx, &pb.LoginRequest{})
-			return err
-		}},
-		{"course", "view courses, enroll, drop", func(ctx context.Context) error {
-			_, err := a.course.ListCourses(ctx, &pb.Empty{})
-			return err
-		}},
-		{"grade", "view grades, upload grades", func(ctx context.Context) error {
-			_, err := a.grade.MyGrades(ctx, &pb.Empty{})
-			return err
-		}},
-		{"announce", "registrar announcements (create, read, edit, delete)", func(ctx context.Context) error {
-			_, err := a.announce.ListAnnouncements(ctx, &pb.Empty{})
-			return err
-		}},
-	}
-	for _, probe := range probes {
-		ctx, cancel := context.WithTimeout(r.Context(), a.cfg.Timeout)
-		err := probe.call(ctx)
-		cancel()
-		p := a.pools[probe.name]
-		row := nodeStatus{
-			Name: probe.name, Addr: p.Addr(), Up: !down(err),
-			Features: probe.features, Conns: p.Size(), Ready: p.Ready(),
+	sp := statusPage{Nodes: append([]nodeStatus{{
+		Name: "view", Addr: a.cfg.ViewListen, Up: true, Features: "pages and controllers (this node)",
+	}}, nodes...)}
+	for _, n := range nodes {
+		if n.DB != nil && len(n.DB.Hosts) > 0 {
+			sp.DBHosts = n.DB.Hosts
+			break
 		}
-		if !row.Up {
-			st, _ := status.FromError(err)
-			row.Detail = st.Code().String()
-		}
-		rows = append(rows, row)
 	}
-	a.render(w, "status", page{User: c, Msg: r.URL.Query().Get("msg"), Data: rows})
+	a.render(w, "status", page{User: c, Data: sp})
 }

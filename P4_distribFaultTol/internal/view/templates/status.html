@@ -3,8 +3,8 @@
 <p>Each feature lives on its own node. A node that is down takes only its own
 features with it.</p>
 <table border="1" cellpadding="4">
-  <tr><th>Node</th><th>Address</th><th>State</th><th>Features</th><th>gRPC connections</th></tr>
-  {{range .Data}}
+  <tr><th>Node</th><th>Address</th><th>State</th><th>Features</th><th>gRPC connections<br><small>(view &rarr; node)</small></th><th>Database</th><th>DB connection pool<br><small>(node &rarr; database)</small></th></tr>
+  {{range .Data.Nodes}}
   <tr>
     <td>{{.Name}}</td>
     <td>{{.Addr}}</td>
@@ -15,8 +15,45 @@ features with it.</p>
     {{end}}
     <td>{{.Features}}</td>
     <td>{{if .Conns}}{{.Ready}} of {{.Conns}} connected{{else}}&mdash;{{end}}</td>
+    {{with .DB}}
+      <td>
+        <code>{{.Database}}</code>
+        {{if .Error}}<br><span style="color:red">{{.Error}}</span>
+        {{else}}<br>via primary {{.ConnectedTo}}{{end}}
+      </td>
+      <td>
+        {{.Open}} open ({{.InUse}} in use, {{.Idle}} idle), max {{.MaxOpen}}<br>
+        <small>waited for a connection: {{.WaitCount}} time(s), {{.WaitMs}} ms total;
+        closed: {{.MaxIdleClosed}} over idle limit, {{.MaxIdleTimeClosed}} idle too long, {{.MaxLifetimeClosed}} too old</small>
+      </td>
+    {{else}}
+      <td>&mdash;</td><td>&mdash;</td>
+    {{end}}
   </tr>
   {{end}}
 </table>
+
+<h2>Database servers</h2>
+<p>PostgreSQL primary with a streaming replica. If the primary goes down, repmgr
+promotes the replica, and every node's pool reconnects to it by itself.</p>
+{{with .Data.DBHosts}}
+<table border="1" cellpadding="4">
+  <tr><th>Server</th><th>Role</th></tr>
+  {{range .}}
+  <tr>
+    <td>{{.Addr}}</td>
+    {{if eq .Role "down"}}
+      <td style="color:red">down{{if .Error}} ({{.Error}}){{end}}</td>
+    {{else if eq .Role "primary"}}
+      <td style="color:green"><b>primary</b> (takes writes)</td>
+    {{else}}
+      <td style="color:green">{{.Role}}</td>
+    {{end}}
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<p>No node that keeps data is answering, so the database servers can't be checked from here.</p>
+{{end}}
 <p><a href="/status">Refresh</a></p>
 {{end}}

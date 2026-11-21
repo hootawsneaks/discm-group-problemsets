@@ -7,7 +7,17 @@
   "jwt_secret": "change-me-shared-by-all-nodes",
   "token_ttl": "1h",
   "rpc_timeout": "2s",
-  "data_dir": "data",
+  "db_hosts": [
+    "localhost:5441",
+    "localhost:5442"
+  ],
+  "db_password": "p4-db-password",
+  "db_max_open_conns": 10,
+  "db_max_idle_conns": 5,
+  "db_conn_max_lifetime": "30m",
+  "db_conn_max_idle_time": "5m",
+  "db_connect_timeout": "500ms",
+  "db_probe_timeout": "500ms",
   "tls_cert": "certs/server.crt",
   "tls_key": "certs/server.key",
   "tls_hosts": [],

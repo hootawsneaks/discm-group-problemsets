@@ -1,12 +1,13 @@
-// Package grade is the grade node: students view their grades, faculty upload them.
+// Package grade is the grade node: students view their grades, faculty upload
+// them. Grades live in the grade node's own database.
 package grade
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -16,49 +17,65 @@ import (
 
 	"p4/internal/authz"
 	"p4/internal/config"
-	"p4/internal/store"
+	"p4/internal/db"
 	pb "p4/proto"
 )
 
-type Grade struct {
-	Student string `json:"student"`
-	Course  string `json:"course"`
-	Term    string `json:"term"`
-	Grade   string `json:"grade"`
-	Faculty string `json:"faculty"` // username of the uploader
-}
-
-type data struct {
-	Grades []Grade `json:"grades"`
-}
-
-func seed() data {
-	return data{Grades: []Grade{
-		{"alice", "CCPROG1", "T1 2024-2025", "4.0", "prof2"},
-		{"alice", "CCPROG2", "T2 2024-2025", "3.5", "prof2"},
-		{"bob", "CCPROG1", "T1 2024-2025", "3.0", "prof2"},
-	}}
+func setup(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS grades (
+			id      bigserial,
+			student text NOT NULL,
+			course  text NOT NULL,
+			term    text NOT NULL,
+			grade   text NOT NULL,
+			faculty text NOT NULL, -- username of the uploader
+			PRIMARY KEY (student, course, term)
+		)`)
+	if err != nil {
+		return err
+	}
+	return db.SeedOnce(ctx, tx, func() error {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO grades (student, course, term, grade, faculty) VALUES
+				('alice', 'CCPROG1', 'T1 2024-2025', '4.0', 'prof2'),
+				('alice', 'CCPROG2', 'T2 2024-2025', '3.5', 'prof2'),
+				('bob',   'CCPROG1', 'T1 2024-2025', '3.0', 'prof2')
+			ON CONFLICT DO NOTHING`)
+		return err
+	})
 }
 
 var validGrades = []string{"4.0", "3.5", "3.0", "2.5", "2.0", "1.5", "1.0", "0.0"}
 
 type server struct {
 	pb.UnimplementedGradeServer
-	db *store.Store[data]
+	db *db.DB
 }
 
-func (s *server) list(keep func(Grade) bool) *pb.GradeList {
+// list returns the grades whose column (student or faculty) equals who.
+func (s *server) list(ctx context.Context, column, who string) (*pb.GradeList, error) {
 	out := &pb.GradeList{}
-	s.db.Read(func(d *data) {
-		for _, g := range d.Grades {
-			if keep(g) {
-				out.Grades = append(out.Grades, &pb.GradeEntry{
-					Student: g.Student, Course: g.Course, Term: g.Term, Grade: g.Grade, Faculty: g.Faculty,
-				})
-			}
+	err := s.db.Tx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx,
+			`SELECT student, course, term, grade, faculty FROM grades WHERE `+column+` = $1 ORDER BY id`, who)
+		if err != nil {
+			return err
 		}
+		defer rows.Close()
+		for rows.Next() {
+			g := &pb.GradeEntry{}
+			if err := rows.Scan(&g.Student, &g.Course, &g.Term, &g.Grade, &g.Faculty); err != nil {
+				return err
+			}
+			out.Grades = append(out.Grades, g)
+		}
+		return rows.Err()
 	})
-	return out
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *server) MyGrades(ctx context.Context, _ *pb.Empty) (*pb.GradeList, error) {
@@ -66,7 +83,7 @@ func (s *server) MyGrades(ctx context.Context, _ *pb.Empty) (*pb.GradeList, erro
 	if err != nil {
 		return nil, err
 	}
-	return s.list(func(g Grade) bool { return g.Student == c.Username() }), nil
+	return s.list(ctx, "student", c.Username())
 }
 
 func (s *server) UploadedGrades(ctx context.Context, _ *pb.Empty) (*pb.GradeList, error) {
@@ -74,7 +91,7 @@ func (s *server) UploadedGrades(ctx context.Context, _ *pb.Empty) (*pb.GradeList
 	if err != nil {
 		return nil, err
 	}
-	return s.list(func(g Grade) bool { return g.Faculty == c.Username() }), nil
+	return s.list(ctx, "faculty", c.Username())
 }
 
 // UploadGrade adds a grade, or replaces the existing one for the same student/course/term.
@@ -83,7 +100,7 @@ func (s *server) UploadGrade(ctx context.Context, r *pb.GradeEntry) (*pb.Empty, 
 	if err != nil {
 		return nil, err
 	}
-	g := Grade{
+	g := &pb.GradeEntry{
 		Student: strings.TrimSpace(r.Student),
 		Course:  strings.ToUpper(strings.TrimSpace(r.Course)),
 		Term:    strings.TrimSpace(r.Term),
@@ -96,26 +113,22 @@ func (s *server) UploadGrade(ctx context.Context, r *pb.GradeEntry) (*pb.Empty, 
 	if !slices.Contains(validGrades, g.Grade) {
 		return nil, status.Errorf(codes.InvalidArgument, "grade must be one of %s", strings.Join(validGrades, ", "))
 	}
-	err = s.db.Update(func(d *data) error {
-		i := slices.IndexFunc(d.Grades, func(x Grade) bool {
-			return x.Student == g.Student && x.Course == g.Course && x.Term == g.Term
-		})
-		if i >= 0 {
-			d.Grades[i] = g
-		} else {
-			d.Grades = append(d.Grades, g)
-		}
-		return nil
+	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO grades (student, course, term, grade, faculty) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (student, course, term) DO UPDATE SET grade = excluded.grade, faculty = excluded.faculty`,
+			g.Student, g.Course, g.Term, g.Grade, g.Faculty)
+		return err
 	})
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
 	log.Printf("%s uploaded %s for %s in %s (%s)", c.Username(), g.Grade, g.Student, g.Course, g.Term)
 	return &pb.Empty{}, nil
 }
 
 func Run(cfg *config.Config) error {
-	db, err := store.Open(filepath.Join(cfg.DataDir, "grade.json"), seed)
+	d, err := db.Open(cfg, "grade", setup)
 	if err != nil {
 		return err
 	}
@@ -126,8 +139,9 @@ func Run(cfg *config.Config) error {
 	// Verify the JWT locally, and ask the auth node whether the session was
 	// logged out. If auth is unreachable the call is allowed through.
 	revoker := authz.RemoteRevoker(cfg.AuthAddr, cfg.RevocationTimeoutDur, cfg.RevocationCacheTTL)
-	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret, revoker)))
-	pb.RegisterGradeServer(g, &server{db: db})
+	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret, revoker, db.Public...)))
+	pb.RegisterGradeServer(g, &server{db: d})
+	pb.RegisterHealthServer(g, db.Health(d))
 	fmt.Println("grade node listening on", lis.Addr())
 	return g.Serve(lis)
 }

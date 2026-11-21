@@ -3,18 +3,21 @@
 // deadlines. It is its own object with its own full CRUD on its own node, and
 // it needs no other node to answer: a student's year level comes from their
 // token, so even with the auth node down, logged-in users can read it.
+// Announcements live in the announce node's own database.
 package announce
 
 import (
 	"cmp"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +27,7 @@ import (
 
 	"p4/internal/authz"
 	"p4/internal/config"
-	"p4/internal/store"
+	"p4/internal/db"
 	pb "p4/proto"
 )
 
@@ -46,48 +49,119 @@ type Announcement struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-type data struct {
-	Announcements []Announcement `json:"announcements"`
+const schema = `
+	CREATE TABLE IF NOT EXISTS announcements (
+		id          text PRIMARY KEY,
+		category    text NOT NULL,
+		title       text NOT NULL,
+		body        text NOT NULL,
+		year_levels text NOT NULL DEFAULT '', -- e.g. "1,2"; empty = everyone
+		starts_at   timestamptz,
+		ends_at     timestamptz,
+		pinned      boolean NOT NULL DEFAULT false,
+		author      text NOT NULL,
+		author_name text NOT NULL,
+		created_at  timestamptz NOT NULL,
+		updated_at  timestamptz NOT NULL
+	)`
+
+const columns = `id, category, title, body, year_levels, starts_at, ends_at, pinned,
+	author, author_name, created_at, updated_at`
+
+func setup(loc *time.Location) func(context.Context, *sql.Tx) error {
+	return func(ctx context.Context, tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, schema); err != nil {
+			return err
+		}
+		return db.SeedOnce(ctx, tx, func() error {
+			for _, a := range seed(loc) {
+				if err := insert(ctx, tx, a); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
 }
 
-func seed(loc *time.Location) func() data {
-	return func() data {
-		now := time.Now().In(loc)
-		day := func(d, h int) time.Time {
-			t := time.Date(now.Year(), now.Month(), now.Day(), h, 0, 0, 0, loc)
-			return t.AddDate(0, 0, d)
-		}
-		mk := func(id, cat, title, body string, years []int, start, end time.Time, pinned bool) Announcement {
-			return Announcement{
-				ID: id, Category: cat, Title: title, Body: body, YearLevels: years,
-				StartsAt: start, EndsAt: end, Pinned: pinned,
-				Author: "registrar", AuthorName: "Office of the Registrar",
-				CreatedAt: now, UpdatedAt: now,
-			}
-		}
-		return data{Announcements: []Announcement{
-			mk("seed-sched-4", "schedule", "Enrollment schedule: 4th year",
-				"4th year students may enroll during this window. Graduating students should settle any holds first.",
-				[]int{4}, day(1, 9), day(2, 17), false),
-			mk("seed-sched-3", "schedule", "Enrollment schedule: 3rd year",
-				"3rd year students may enroll during this window.",
-				[]int{3}, day(3, 9), day(4, 17), false),
-			mk("seed-sched-12", "schedule", "Enrollment schedule: 1st and 2nd year",
-				"1st and 2nd year students may enroll during this window. Block sections are pre-loaded for 1st years.",
-				[]int{1, 2}, day(5, 9), day(6, 17), false),
-			mk("seed-confirm", "confirmation", "Confirm your enrollment",
-				"Review and confirm your enrolled courses before the deadline. Unconfirmed slots will be released to other students.",
-				nil, time.Time{}, day(8, 17), true),
-			mk("seed-payment", "payment", "Tuition payment deadline",
-				"Tuition for the coming term must be paid by the deadline. Late payments incur a PHP 500 fee.",
-				nil, time.Time{}, day(12, 17), true),
-		}}
+func seed(loc *time.Location) []Announcement {
+	now := time.Now().In(loc)
+	day := func(d, h int) time.Time {
+		t := time.Date(now.Year(), now.Month(), now.Day(), h, 0, 0, 0, loc)
+		return t.AddDate(0, 0, d)
 	}
+	mk := func(id, cat, title, body string, years []int, start, end time.Time, pinned bool) Announcement {
+		return Announcement{
+			ID: id, Category: cat, Title: title, Body: body, YearLevels: years,
+			StartsAt: start, EndsAt: end, Pinned: pinned,
+			Author: "registrar", AuthorName: "Office of the Registrar",
+			CreatedAt: now, UpdatedAt: now,
+		}
+	}
+	return []Announcement{
+		mk("seed-sched-4", "schedule", "Enrollment schedule: 4th year",
+			"4th year students may enroll during this window. Graduating students should settle any holds first.",
+			[]int{4}, day(1, 9), day(2, 17), false),
+		mk("seed-sched-3", "schedule", "Enrollment schedule: 3rd year",
+			"3rd year students may enroll during this window.",
+			[]int{3}, day(3, 9), day(4, 17), false),
+		mk("seed-sched-12", "schedule", "Enrollment schedule: 1st and 2nd year",
+			"1st and 2nd year students may enroll during this window. Block sections are pre-loaded for 1st years.",
+			[]int{1, 2}, day(5, 9), day(6, 17), false),
+		mk("seed-confirm", "confirmation", "Confirm your enrollment",
+			"Review and confirm your enrolled courses before the deadline. Unconfirmed slots will be released to other students.",
+			nil, time.Time{}, day(8, 17), true),
+		mk("seed-payment", "payment", "Tuition payment deadline",
+			"Tuition for the coming term must be paid by the deadline. Late payments incur a PHP 500 fee.",
+			nil, time.Time{}, day(12, 17), true),
+	}
+}
+
+// ---- database rows ----
+
+func joinYears(ys []int) string {
+	parts := make([]string, len(ys))
+	for i, y := range ys {
+		parts[i] = strconv.Itoa(y)
+	}
+	return strings.Join(parts, ",")
+}
+
+func splitYears(s string) []int {
+	var ys []int
+	for _, p := range strings.Split(s, ",") {
+		if y, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+			ys = append(ys, y)
+		}
+	}
+	return ys
+}
+
+func nullTime(t time.Time) sql.NullTime { return sql.NullTime{Time: t, Valid: !t.IsZero()} }
+
+func insert(ctx context.Context, tx *sql.Tx, a Announcement) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO announcements (`+columns+`)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT DO NOTHING`,
+		a.ID, a.Category, a.Title, a.Body, joinYears(a.YearLevels), nullTime(a.StartsAt), nullTime(a.EndsAt),
+		a.Pinned, a.Author, a.AuthorName, a.CreatedAt, a.UpdatedAt)
+	return err
+}
+
+type scanner interface{ Scan(...any) error }
+
+func scan(row scanner) (Announcement, error) {
+	var a Announcement
+	var years string
+	var start, end sql.NullTime
+	err := row.Scan(&a.ID, &a.Category, &a.Title, &a.Body, &years, &start, &end, &a.Pinned,
+		&a.Author, &a.AuthorName, &a.CreatedAt, &a.UpdatedAt)
+	a.YearLevels, a.StartsAt, a.EndsAt = splitYears(years), start.Time, end.Time
+	return a, err
 }
 
 type server struct {
 	pb.UnimplementedAnnounceServer
-	db *store.Store[data]
+	db *db.DB
 }
 
 // visible reports whether the caller may see a: everyone except students sees
@@ -187,13 +261,26 @@ func (s *server) ListAnnouncements(ctx context.Context, _ *pb.Empty) (*pb.Announ
 		return nil, err
 	}
 	var list []Announcement
-	s.db.Read(func(d *data) {
-		for _, a := range d.Announcements {
+	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT `+columns+` FROM announcements`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			a, err := scan(rows)
+			if err != nil {
+				return err
+			}
 			if visible(c, a) {
 				list = append(list, a)
 			}
 		}
+		return rows.Err()
 	})
+	if err != nil {
+		return nil, err
+	}
 	slices.SortStableFunc(list, order(time.Now()))
 	out := &pb.AnnouncementList{}
 	for _, a := range list {
@@ -208,16 +295,20 @@ func (s *server) GetAnnouncement(ctx context.Context, r *pb.AnnouncementId) (*pb
 		return nil, err
 	}
 	var a Announcement
-	var ok bool
-	s.db.Read(func(d *data) {
-		i := slices.IndexFunc(d.Announcements, func(x Announcement) bool { return x.ID == r.Id })
-		if ok = i >= 0; ok {
-			a = d.Announcements[i]
+	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
+		var err error
+		a, err = scan(tx.QueryRowContext(ctx, `SELECT `+columns+` FROM announcements WHERE id = $1`, r.Id))
+		if errors.Is(err, sql.ErrNoRows) {
+			return status.Errorf(codes.NotFound, "no announcement %q", r.Id)
 		}
+		return err
 	})
+	if err != nil {
+		return nil, err
+	}
 	// An announcement for another year level is reported as missing, so a
 	// student cannot tell it exists.
-	if !ok || !visible(c, a) {
+	if !visible(c, a) {
 		return nil, status.Errorf(codes.NotFound, "no announcement %q", r.Id)
 	}
 	return toPB(a), nil
@@ -236,11 +327,8 @@ func (s *server) CreateAnnouncement(ctx context.Context, r *pb.Announcement) (*p
 	rand.Read(id)
 	now := time.Now()
 	a.ID, a.Author, a.AuthorName, a.CreatedAt, a.UpdatedAt = hex.EncodeToString(id), c.Username(), c.Name, now, now
-	if err := s.db.Update(func(d *data) error {
-		d.Announcements = append(d.Announcements, a)
-		return nil
-	}); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	if err := s.db.Tx(ctx, func(tx *sql.Tx) error { return insert(ctx, tx, a) }); err != nil {
+		return nil, err
 	}
 	log.Printf("%s posted announcement %s %q", c.Username(), a.ID, a.Title)
 	return toPB(a), nil
@@ -255,18 +343,20 @@ func (s *server) UpdateAnnouncement(ctx context.Context, r *pb.Announcement) (*p
 	if err != nil {
 		return nil, err
 	}
-	err = s.db.Update(func(d *data) error {
-		i := slices.IndexFunc(d.Announcements, func(x Announcement) bool { return x.ID == r.Id })
-		if i < 0 {
-			return status.Errorf(codes.NotFound, "no announcement %q", r.Id)
-		}
-		old := d.Announcements[i]
+	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
 		// The registrar is an office: any registrar account may edit any
 		// announcement. Who first posted it and when are kept.
-		a.ID, a.Author, a.AuthorName, a.CreatedAt = old.ID, old.Author, old.AuthorName, old.CreatedAt
-		a.UpdatedAt = time.Now()
-		d.Announcements[i] = a
-		return nil
+		a.ID, a.UpdatedAt = r.Id, time.Now()
+		err := tx.QueryRowContext(ctx, `
+			UPDATE announcements SET category = $2, title = $3, body = $4, year_levels = $5,
+				starts_at = $6, ends_at = $7, pinned = $8, updated_at = $9
+			WHERE id = $1 RETURNING author, author_name, created_at`,
+			a.ID, a.Category, a.Title, a.Body, joinYears(a.YearLevels), nullTime(a.StartsAt), nullTime(a.EndsAt),
+			a.Pinned, a.UpdatedAt).Scan(&a.Author, &a.AuthorName, &a.CreatedAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return status.Errorf(codes.NotFound, "no announcement %q", r.Id)
+		}
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -280,12 +370,14 @@ func (s *server) DeleteAnnouncement(ctx context.Context, r *pb.AnnouncementId) (
 	if err != nil {
 		return nil, err
 	}
-	err = s.db.Update(func(d *data) error {
-		i := slices.IndexFunc(d.Announcements, func(x Announcement) bool { return x.ID == r.Id })
-		if i < 0 {
+	err = s.db.Tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM announcements WHERE id = $1`, r.Id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
 			return status.Errorf(codes.NotFound, "no announcement %q", r.Id)
 		}
-		d.Announcements = slices.Delete(d.Announcements, i, i+1)
 		return nil
 	})
 	if err != nil {
@@ -296,7 +388,7 @@ func (s *server) DeleteAnnouncement(ctx context.Context, r *pb.AnnouncementId) (
 }
 
 func Run(cfg *config.Config) error {
-	db, err := store.Open(filepath.Join(cfg.DataDir, "announce.json"), seed(cfg.Location))
+	d, err := db.Open(cfg, "announce", setup(cfg.Location))
 	if err != nil {
 		return err
 	}
@@ -308,8 +400,9 @@ func Run(cfg *config.Config) error {
 	// whether the session was logged out, and let the call through if auth
 	// cannot be reached.
 	revoker := authz.RemoteRevoker(cfg.AuthAddr, cfg.RevocationTimeoutDur, cfg.RevocationCacheTTL)
-	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret, revoker)))
-	pb.RegisterAnnounceServer(g, &server{db: db})
+	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret, revoker, db.Public...)))
+	pb.RegisterAnnounceServer(g, &server{db: d})
+	pb.RegisterHealthServer(g, db.Health(d))
 	fmt.Println("announce node listening on", lis.Addr())
 	return g.Serve(lis)
 }

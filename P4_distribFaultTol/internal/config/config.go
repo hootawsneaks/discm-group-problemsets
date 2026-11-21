@@ -1,6 +1,7 @@
 // Package config loads config.json. Node addresses can be overridden with
 // environment variables (P4_AUTH_ADDR, P4_COURSE_ADDR, P4_GRADE_ADDR,
-// P4_ANNOUNCE_ADDR) so the same file works locally and in docker-compose.
+// P4_ANNOUNCE_ADDR, and P4_DB_HOSTS as a comma-separated list) so the same file
+// works locally and in docker-compose.
 package config
 
 import (
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -27,7 +29,21 @@ type Config struct {
 	JWTSecret    string `json:"jwt_secret"`  // shared by every node to verify tokens
 	TokenTTL     string `json:"token_ttl"`   // e.g. "1h"
 	RPCTimeout   string `json:"rpc_timeout"` // per gRPC call from the view, e.g. "2s"
-	DataDir      string `json:"data_dir"`    // each node keeps its own <role>.json here
+
+	// The replicated database: a PostgreSQL primary and its replica. Every
+	// server is listed; a node only uses the one that accepts writes, so
+	// after repmgr promotes the replica, the nodes follow by themselves.
+	DBHosts    []string `json:"db_hosts"`    // host:port of every database server
+	DBPassword string   `json:"db_password"` // every node's database user has this password
+
+	// Database connection pooling: each node keeps one pool of connections
+	// to its own database.
+	DBMaxOpenConns    int    `json:"db_max_open_conns"`     // at most this many connections at once
+	DBMaxIdleConns    int    `json:"db_max_idle_conns"`     // kept open while idle, ready for the next request
+	DBConnMaxLifetime string `json:"db_conn_max_lifetime"`  // a connection is replaced after this long
+	DBConnMaxIdleTime string `json:"db_conn_max_idle_time"` // an unused connection is closed after this long
+	DBConnectTimeout  string `json:"db_connect_timeout"`    // per server, when opening a new connection
+	DBProbeTimeout    string `json:"db_probe_timeout"`      // status page: how long to wait for each server
 
 	// HTTPS for the view node. The certificate is self-signed and generated on
 	// first start, so the browser shows HTTPS (with a one-time warning).
@@ -60,6 +76,10 @@ type Config struct {
 	RevocationCacheTTL   time.Duration  `json:"-"`
 	RevocationTimeoutDur time.Duration  `json:"-"`
 	Location             *time.Location `json:"-"`
+	DBConnMaxLifetimeDur time.Duration  `json:"-"`
+	DBConnMaxIdleTimeDur time.Duration  `json:"-"`
+	DBConnectTimeoutDur  time.Duration  `json:"-"`
+	DBProbeTimeoutDur    time.Duration  `json:"-"`
 }
 
 func Load(path string) (*Config, error) {
@@ -72,7 +92,13 @@ func Load(path string) (*Config, error) {
 		Timezone:          "Asia/Manila",
 		TokenTTL:          "1h",
 		RPCTimeout:        "2s",
-		DataDir:           "data",
+		DBHosts:           []string{"localhost:5441", "localhost:5442"},
+		DBMaxOpenConns:    10,
+		DBMaxIdleConns:    5,
+		DBConnMaxLifetime: "30m",
+		DBConnMaxIdleTime: "5m",
+		DBConnectTimeout:  "500ms",
+		DBProbeTimeout:    "500ms",
 		TLSCert:           "certs/server.crt",
 		TLSKey:            "certs/server.key",
 		PoolSize:          4,
@@ -96,6 +122,9 @@ func Load(path string) (*Config, error) {
 			*dst = v
 		}
 	}
+	if v := os.Getenv("P4_DB_HOSTS"); v != "" {
+		c.DBHosts = strings.Split(v, ",")
+	}
 	if c.JWTSecret == "" {
 		return nil, fmt.Errorf("%s: jwt_secret must be set", path)
 	}
@@ -115,6 +144,36 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf(
 			"revocation_timeout (%s) must be shorter than rpc_timeout (%s), or a node that cannot "+
 				"reach the auth node will look down itself", c.RevocationTimeout, c.RPCTimeout)
+	}
+	for name, d := range map[string]struct {
+		in  string
+		out *time.Duration
+	}{
+		"db_conn_max_lifetime":  {c.DBConnMaxLifetime, &c.DBConnMaxLifetimeDur},
+		"db_conn_max_idle_time": {c.DBConnMaxIdleTime, &c.DBConnMaxIdleTimeDur},
+		"db_connect_timeout":    {c.DBConnectTimeout, &c.DBConnectTimeoutDur},
+		"db_probe_timeout":      {c.DBProbeTimeout, &c.DBProbeTimeoutDur},
+	} {
+		if *d.out, err = time.ParseDuration(d.in); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	if len(c.DBHosts) == 0 {
+		return nil, fmt.Errorf("%s: db_hosts must list the database servers", path)
+	}
+	// A server that is switched off swallows connection attempts, so these
+	// waits must leave room in the caller's budget, as with revocation. A new
+	// connection may try every server in turn, so it is the total that counts:
+	// otherwise, with the database down, the node itself would look down.
+	if total := c.DBConnectTimeoutDur * time.Duration(len(c.DBHosts)); total >= c.Timeout || c.DBProbeTimeoutDur >= c.Timeout {
+		return nil, fmt.Errorf("db_connect_timeout (%s) x %d servers and db_probe_timeout (%s) must each be shorter than rpc_timeout (%s)",
+			c.DBConnectTimeout, len(c.DBHosts), c.DBProbeTimeout, c.RPCTimeout)
+	}
+	if c.DBMaxOpenConns < 1 {
+		c.DBMaxOpenConns = 1
+	}
+	if c.DBMaxIdleConns > c.DBMaxOpenConns {
+		c.DBMaxIdleConns = c.DBMaxOpenConns
 	}
 	if c.Location, err = time.LoadLocation(c.Timezone); err != nil {
 		return nil, fmt.Errorf("timezone: %w", err)
