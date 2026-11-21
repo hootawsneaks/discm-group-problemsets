@@ -1,29 +1,69 @@
 # Local demo: each node in its own container on a shared network, talking gRPC.
+# IP addresses are declared here (not auto-assigned by Docker) and the nodes
+# find each other by IP, so the connectivity between containers is configured
+# rather than inherited:
+#   view = 172.29.0.10, auth = .11, course = .12, grade = .13 on p4net.
 # Take a node down with e.g. `docker compose stop grade`; only grade pages break.
 # For separate VMs, run one service per VM (see README.md).
 x-node: &node
   build: .
   image: p4
   restart: "no"
-  volumes:
-    - ./config.json:/app/config.json:ro
-    - ./data:/app/data
+  # The nodes don't trap SIGTERM, so without this `docker compose stop <node>`
+  # waits the default 10s before killing it, which makes the fault-tolerance
+  # demo drag. Nothing is lost: each node's data file is written with a
+  # temp-file-and-rename, so it is never half-written.
+  stop_grace_period: 2s
   environment:
-    P4_AUTH_ADDR: auth:50051
-    P4_COURSE_ADDR: course:50052
-    P4_GRADE_ADDR: grade:50053
+    P4_AUTH_ADDR: 172.29.0.11:50051
+    P4_COURSE_ADDR: 172.29.0.12:50052
+    P4_GRADE_ADDR: 172.29.0.13:50053
 
 services:
   view:
     <<: *node
     command: ["view"]
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.10
     ports: ["8080:8080"]
+    volumes:
+      - ./config.json:/app/config.json:ro
+      # The self-signed certificate lives here, so it survives restarts and the
+      # browser exception you accept once keeps working.
+      - ./certs:/app/certs
   auth:
     <<: *node
     command: ["auth"]
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.11
+    volumes:
+      - ./config.json:/app/config.json:ro
+      # Each node gets its own data folder: no node can read another's data.
+      - ./data/auth:/app/data
   course:
     <<: *node
     command: ["course"]
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.12
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./data/course:/app/data
   grade:
     <<: *node
     command: ["grade"]
+    networks:
+      p4net:
+        ipv4_address: 172.29.0.13
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./data/grade:/app/data
+
+networks:
+  p4net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16

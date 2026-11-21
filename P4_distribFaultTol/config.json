@@ -6,5 +6,11 @@
   "jwt_secret": "change-me-shared-by-all-nodes",
   "token_ttl": "1h",
   "rpc_timeout": "2s",
-  "data_dir": "data"
+  "data_dir": "data",
+  "tls_cert": "certs/server.crt",
+  "tls_key": "certs/server.key",
+  "tls_hosts": [],
+  "pool_size": 4,
+  "revocation_cache": "0s",
+  "revocation_timeout": "500ms"
 }
