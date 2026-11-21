@@ -1,21 +1,18 @@
 {
     "producers": 2,
-    "consumers": 1,
-    "max_queue": 5,
-
+    "consumers": 4,
+    "max_queue": 20,
     "listen_addr": ":50051",
     "http_addr": ":8080",
     "upload_dir": "data/uploads",
     "preview_dir": "data/previews",
     "convert_dir": "data/converted",
-
     "tls_cert": "certs/server.crt",
     "tls_key": "certs/server.key",
     "tls_hosts": [],
-
     "compress": true,
     "compress_crf": 28,
-
+    "max_upload_bytes": 1073741824,
     "consumer_addr": "localhost:50051",
     "input_dir": "videos",
     "connect_wait": "60s"
