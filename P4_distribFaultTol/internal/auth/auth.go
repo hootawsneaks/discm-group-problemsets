@@ -19,6 +19,7 @@ import (
 	"p4/internal/authz"
 	"p4/internal/config"
 	"p4/internal/db"
+	"p4/internal/valid"
 	pb "p4/proto"
 )
 
@@ -78,6 +79,14 @@ type server struct {
 }
 
 func (s *server) Login(ctx context.Context, r *pb.LoginRequest) (*pb.LoginReply, error) {
+	// Bound the inputs before touching the database or hashing: a client can
+	// send any amount of text here without being logged in.
+	if err := valid.TooLong("username", r.Username, valid.MaxUsername); err != nil {
+		return nil, err
+	}
+	if err := valid.TooLong("password", r.Password, valid.MaxPassword); err != nil {
+		return nil, err
+	}
 	var u user
 	var hash string
 	var tok string
