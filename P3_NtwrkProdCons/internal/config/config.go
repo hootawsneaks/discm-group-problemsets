@@ -39,6 +39,11 @@ type Config struct {
 	Compress    bool `json:"compress"`
 	CompressCRF int  `json:"compress_crf"`
 
+	// MaxUploadBytes is the largest single video the consumer will accept.
+	// max_queue bounds how many uploads are in flight; this bounds how big
+	// each one is, so the two together give a worst-case disk figure.
+	MaxUploadBytes int64 `json:"max_upload_bytes"`
+
 	// Producer side
 	ConsumerAddr string   `json:"consumer_addr"` // gRPC address of the consumer the producer dials
 	InputDir     string   `json:"input_dir"`     // root folder holding p1, p2, ... subfolders
@@ -60,21 +65,22 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 func Default() Config {
 	return Config{
-		Producers:    1,
-		Consumers:    1,
-		QueueSize:    5,
-		ListenAddr:   ":50051",
-		HTTPAddr:     ":8080",
-		UploadDir:    "data/uploads",
-		PreviewDir:   "data/previews",
-		ConvertDir:   "data/converted",
-		TLSCert:      "certs/server.crt",
-		TLSKey:       "certs/server.key",
-		Compress:     true,
-		CompressCRF:  28,
-		ConsumerAddr: "localhost:50051",
-		InputDir:     "videos",
-		ConnectWait:  Duration{60 * time.Second},
+		Producers:      1,
+		Consumers:      1,
+		QueueSize:      5,
+		ListenAddr:     ":50051",
+		HTTPAddr:       ":8080",
+		UploadDir:      "data/uploads",
+		PreviewDir:     "data/previews",
+		ConvertDir:     "data/converted",
+		TLSCert:        "certs/server.crt",
+		TLSKey:         "certs/server.key",
+		Compress:       true,
+		CompressCRF:    28,
+		MaxUploadBytes: 1 << 30, // 1 GiB
+		ConsumerAddr:   "localhost:50051",
+		InputDir:       "videos",
+		ConnectWait:    Duration{60 * time.Second},
 	}
 }
 
@@ -89,9 +95,6 @@ func Load(path string) (Config, error) {
 	// CONSUMER_ADDR overrides consumer_addr, so docker-compose.yml can declare the IP.
 	if addr := os.Getenv("CONSUMER_ADDR"); addr != "" {
 		cfg.ConsumerAddr = addr
-	}
-	if cfg.CompressCRF <= 0 {
-		cfg.CompressCRF = Default().CompressCRF
 	}
 	return cfg, err
 }
