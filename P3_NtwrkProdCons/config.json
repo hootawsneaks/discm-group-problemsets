@@ -9,6 +9,13 @@
     "preview_dir": "data/previews",
     "convert_dir": "data/converted",
 
+    "tls_cert": "certs/server.crt",
+    "tls_key": "certs/server.key",
+    "tls_hosts": [],
+
+    "compress": true,
+    "compress_crf": 28,
+
     "consumer_addr": "localhost:50051",
     "input_dir": "videos",
     "connect_wait": "60s"

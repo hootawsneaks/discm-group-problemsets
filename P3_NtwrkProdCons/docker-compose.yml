@@ -7,6 +7,10 @@ services:
   consumer:
     build: .
     command: ["consumer"]
+    # Without this, `docker compose stop` waits the default 10s before killing
+    # the consumer. Uploads are saved with a temp-file-and-rename, so a stopped
+    # consumer never leaves a half-written video in the upload folder.
+    stop_grace_period: 2s
     networks:
       p3net:
         ipv4_address: 172.28.0.10
@@ -16,6 +20,9 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./data:/app/data
+      # The self-signed certificate lives here, so it survives restarts and the
+      # browser exception you accept once keeps working.
+      - ./certs:/app/certs
 
   producer:
     build: .

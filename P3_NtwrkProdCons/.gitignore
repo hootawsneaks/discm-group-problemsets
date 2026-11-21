@@ -1,4 +1,5 @@
 bin/
 data/
 videos/
+certs/
 *.plan

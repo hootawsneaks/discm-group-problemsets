@@ -1,5 +1,4 @@
 bin/
 data/
 videos/
-docs/
-*.md
+certs/
