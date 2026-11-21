@@ -14,7 +14,7 @@ Runtime folders (git-ignored): `videos/p1, videos/p2, ...` (producer input), `da
 
 ## Configuration
 
-Everything is set in `config.json`; there are no command-line overrides. The main settings:
+Everything is set in `config.json`; the only override is the `CONSUMER_ADDR` environment variable, which replaces `consumer_addr` (used by `docker-compose.yml`). The main settings:
 
 - `producers` (p): number of producer threads. Thread i uploads every video in `videos/p<i>/`, so create `videos/p1` to `videos/p<p>`.
 - `consumers` (c): number of consumer threads.
@@ -25,10 +25,20 @@ The producer waits up to `connect_wait` for the consumer, so start order doesn't
 
 ## Run locally
 
+Run the consumer and producer in two separate terminals.
+
+Linux / macOS:
 ```sh
 go build -o bin/p3 ./cmd/p3
 bin/p3 consumer    # gRPC on :50051, GUI at http://localhost:8080
 bin/p3 producer
+```
+
+Windows PowerShell (the binary needs the `.exe` extension):
+```powershell
+go build -o bin/p3.exe ./cmd/p3
+.\bin\p3.exe consumer    # gRPC on :50051, GUI at http://localhost:8080
+.\bin\p3.exe producer
 ```
 
 Use `-config <path>` to load a different config file.
@@ -41,14 +51,28 @@ docker build -t p3 .
 ```
 
 Consumer VM (open TCP 50051 and 8080 in its firewall):
+
+Linux / macOS:
 ```sh
 docker run -p 50051:50051 -p 8080:8080 \
   -v $PWD/config.json:/app/config.json:ro -v $PWD/data:/app/data p3 consumer
 ```
 
+Windows PowerShell:
+```powershell
+docker run -p 50051:50051 -p 8080:8080 -v ${PWD}/config.json:/app/config.json:ro -v ${PWD}/data:/app/data p3 consumer
+```
+
 Producer VM: first set `"consumer_addr": "<consumer-vm-ip>:50051"` in its `config.json`, then:
+
+Linux / macOS:
 ```sh
 docker run -v $PWD/config.json:/app/config.json:ro -v $PWD/videos:/app/videos:ro p3 producer
+```
+
+Windows PowerShell:
+```powershell
+docker run -v ${PWD}/config.json:/app/config.json:ro -v ${PWD}/videos:/app/videos:ro p3 producer
 ```
 
 `config.json` is mounted into the container, so edits take effect on the next run without rebuilding.
