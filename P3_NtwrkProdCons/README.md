@@ -36,10 +36,16 @@ The producer waits up to `connect_wait` for the consumer, so start order doesn't
 
 Put a few sample videos in `samples/`, then run (Windows PowerShell):
 ```powershell
-.\setup-videos.ps1               # creates videos/p1 ... videos/p<producers> from config.json
-.\setup-videos.ps1 -Count 3      # only 3 samples per folder
+.\setup-videos.ps1                # creates videos/p1 ... videos/p<producers> from config.json
+.\setup-videos.ps1 -Count 3       # only 3 samples per folder
+.\setup-videos.ps1 -Duplicates 2  # leave 2 samples byte-identical across folders
 ```
 Each folder gets a copy of every sample, renamed `p<i>_<name>`. The script deletes and recreates `videos/` on every run.
+
+Because the consumer rejects an upload whose contents it already has, each copy gets a few random
+bytes appended so it counts as a different video and all of them are accepted. `-Duplicates N`
+leaves the first N samples byte-identical in every folder instead, so the consumer saves one copy
+and reports the rest as duplicates — that is what demonstrates duplicate detection.
 
 ## Run locally
 
