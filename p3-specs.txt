@@ -1,0 +1,64 @@
+p3
+======
+Specifications
+Here's a producer-consumer exercise involving file writes and network sockets. This will help you practice concurrent programming, file I/O, queueing, and network communication.  This is a simple simulation of a media upload service.
+
+There are two main components
+
+1) Producer: Reads the a video file, uploads it to the media upload service (consumer).
+2) Consumer:  Accepts simultaneous media uploads.  Saves the uploaded videos to a single folder. Displays and previews the 10 seconds of the uploaded video file.
+
+Both the producer and consumer runs on a diffrent virtual machine and communicate with each other via gRPC.
+
+Input
+The program accepts inputs from the user.
+
+p - Number of producer threads / instances.  Each thread must read from a separate folder containing the videos.
+
+c - Number of consumer threads
+
+q - max queue lenght.  For simplicity we will use a leaky bucket design, additional videos beyond the queue capacity will be dropped.
+
+Output
+The output of the program should show the following:
+
+1) The consumer has a GUI (can be window or browser based)
+2) The GUI will show the uploaded videos, preview the 10 seconds of the video on mouse hover.
+3) Display the video on click.
+
+Bonus
+1) The consumer program can tell the producer processes that the queue is full.
+2) Duplicate detection.
+3) Video compression.
+
+Deliverables
+1) Source code
+2) Video Demonstration (test cases to be provided later)
+3) Source code + build/compilation steps
+4) Slides containing the following:
+
+Key implementation steps
+Queueing details
+Breakdown of producer and consumer concepts applied
+Synchronization mechanisms used to solve the problem
+
+======
+Questions 
+1.  it is mentioned in the specs for P3 that the producer threads must "read from a separate folder containing the videos". Does this imply that each thread has its own folder to send videos to the server to? And if so, how many folders max should we use for the project?
+Does this also mean that we have to have the videos inside each producer thread folder prepared before we run the program?
+
+2. can we just use plaintext grpc or does it need to be more secure (i.e., tls encryption)?
+for the web view node. do we need to have https din?
+A: OK
+A: So long as the address bar on the browser would show HTTPS
+
+
+3. should the producer run like a batch job where it ends once all the videos in the folders are processed, or should it continue running so that it can accept more videos after the initial processing of the existing videos is done?
+A: Producer is like a batch job.  The consumer is like a live service.
+
+
+4.  clarification po on the web view. Do we need to serve the consumer GUI over HTTPS (with TLS on the web server), or is HTTP okay as long as it opens in the browser? If HTTPS, is a self-signed certificate acceptable even if the browser shows a “not secure” warning?
+A: HTTPS self signed is fine.
+
+5. for the demo for p3, are we allowed to have an automation/script for creating folders based on p (number of threads) and placing videos in them? Testing/demoing with a high value of p would be tedious otherwise po eh. 
+A: All good
