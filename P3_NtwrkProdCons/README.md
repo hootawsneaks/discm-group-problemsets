@@ -63,6 +63,7 @@ docker compose down          # stop and remove them
 ```
 
 - **consumer**: gRPC on `50051`, GUI at http://localhost:8080; uploads are saved to `./data`.
-- **producer**: reads `./videos` (read-only). It shares the consumer container's network, so the default `"consumer_addr": "localhost:50051"` works as is.
+- **producer**: reads `./videos` (read-only).
+- IP addresses are declared in `docker-compose.yml`, not auto-assigned: consumer `172.28.0.10`, producer `172.28.0.11` on the `p3net` subnet (`172.28.0.0/16`). The producer gets `CONSUMER_ADDR=172.28.0.10:50051`, which overrides `consumer_addr` in `config.json`.
 
 Both containers read `./config.json`. After editing it, run `docker compose up` again.

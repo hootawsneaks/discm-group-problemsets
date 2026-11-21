@@ -1,10 +1,15 @@
 # Local demo: consumer and producer in separate containers talking over gRPC.
-# All settings come from ./config.json (mounted, so edits apply on restart without rebuilding).
+# IP addresses are declared here (not auto-assigned by Docker):
+#   consumer = 172.28.0.10, producer = 172.28.0.11 on the p3net subnet.
+# Other settings come from ./config.json (mounted, so edits apply on restart without rebuilding).
 # For separate VMs, run only one service per VM (see README.md).
 services:
   consumer:
     build: .
     command: ["consumer"]
+    networks:
+      p3net:
+        ipv4_address: 172.28.0.10
     ports:
       - "50051:50051"
       - "8080:8080"
@@ -15,9 +20,20 @@ services:
   producer:
     build: .
     command: ["producer"]
-    # Share the consumer's network so config.json's "localhost:50051" reaches it.
-    network_mode: "service:consumer"
+    networks:
+      p3net:
+        ipv4_address: 172.28.0.11
+    environment:
+      # Overrides consumer_addr in config.json: the consumer's declared IP above.
+      CONSUMER_ADDR: "172.28.0.10:50051"
     depends_on: [consumer]
     volumes:
       - ./config.json:/app/config.json:ro
       - ./videos:/app/videos:ro
+
+networks:
+  p3net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

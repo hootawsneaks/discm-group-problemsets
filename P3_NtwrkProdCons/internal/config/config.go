@@ -66,5 +66,9 @@ func Load(path string) (Config, error) {
 		return cfg, err
 	}
 	err = json.Unmarshal(data, &cfg)
+	// CONSUMER_ADDR overrides consumer_addr, so docker-compose.yml can declare the IP.
+	if addr := os.Getenv("CONSUMER_ADDR"); addr != "" {
+		cfg.ConsumerAddr = addr
+	}
 	return cfg, err
 }
