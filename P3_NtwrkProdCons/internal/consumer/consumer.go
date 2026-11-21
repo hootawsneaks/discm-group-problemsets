@@ -118,6 +118,18 @@ func (s *server) UploadVideo(stream pb.MediaUpload_UploadVideoServer) error {
 		}
 		sum.Write(data)
 		size += int64(len(data))
+		// Stop reading as soon as the video is over the limit, rather than
+		// taking the whole thing and rejecting it afterwards. The deferred
+		// cleanup removes the part-written temp file.
+		if size > s.cfg.MaxUploadBytes {
+			s.dropped.Add(1)
+			log.Printf("[drop] %q from producer %d is over the %s limit",
+				name, pid, humanBytes(s.cfg.MaxUploadBytes))
+			return stream.SendAndClose(&pb.UploadStatus{
+				Accepted: false,
+				Message:  "too large, limit is " + humanBytes(s.cfg.MaxUploadBytes),
+			})
+		}
 	}
 	if tmp == nil {
 		return stream.SendAndClose(&pb.UploadStatus{Accepted: false, Message: "empty upload"})
@@ -247,8 +259,11 @@ func (s *server) worker(id int) {
 // save renames the received temp file into place under a unique name, so the
 // web UI never lists a half-written file. Name collisions get a _N suffix.
 func (s *server) save(j job) (string, error) {
+	// filepath.Base strips any directories a producer put in the name, so an
+	// upload cannot be written outside the upload folder. What is left can
+	// still be unusable as a filename, in which case we name it ourselves.
 	base := filepath.Base(j.filename)
-	if base == "." || base == string(filepath.Separator) || base == "" {
+	if base == "." || base == ".." || base == string(filepath.Separator) || base == "" {
 		base = fmt.Sprintf("video_%d.mp4", time.Now().UnixNano())
 	}
 	ext := filepath.Ext(base)
