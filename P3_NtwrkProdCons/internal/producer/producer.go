@@ -41,7 +41,7 @@ func Run(cfg config.Config) error {
 	}
 	client := pb.NewMediaUploadClient(conn)
 
-	var accepted, dropped, duplicates, failed atomic.Int64
+	var accepted, dropped, duplicates, oversize, failed atomic.Int64
 	var wg sync.WaitGroup
 	for i := 1; i <= cfg.Producers; i++ {
 		dir := filepath.Join(cfg.InputDir, fmt.Sprintf("p%d", i))
@@ -54,7 +54,16 @@ func Run(cfg config.Config) error {
 				return
 			}
 			log.Printf("[producer %d] %d video(s) in %s", id, len(files), dir)
-			for _, f := range files {
+			for n, f := range files {
+				// If the consumer has gone away, wait for it to come back, but
+				// only for connect_wait. Without this the next upload would
+				// block forever and the producer would never finish.
+				if err := ensureReady(conn, cfg); err != nil {
+					left := len(files) - n
+					failed.Add(int64(left))
+					log.Printf("[producer %d] giving up with %d video(s) left: %v", id, left, err)
+					return
+				}
 				st, err := uploadFile(context.Background(), client, int32(id), f)
 				switch {
 				case err != nil:
@@ -67,6 +76,10 @@ func Run(cfg config.Config) error {
 					// The consumer already has this exact video (bonus: duplicate detection).
 					duplicates.Add(1)
 					log.Printf("[producer %d] %s: DUPLICATE (%s)", id, filepath.Base(f), st.GetMessage())
+				case strings.HasPrefix(st.GetMessage(), "too large"):
+					// Over max_upload_bytes, which is a different thing from a full queue.
+					oversize.Add(1)
+					log.Printf("[producer %d] %s: TOO LARGE (%s)", id, filepath.Base(f), st.GetMessage())
 				default:
 					// The consumer told us its queue is full (bonus: back-pressure signal).
 					dropped.Add(1)
@@ -76,9 +89,20 @@ func Run(cfg config.Config) error {
 		}(i, dir)
 	}
 	wg.Wait()
-	log.Printf("done: %d accepted, %d dropped (queue full), %d duplicate, %d failed",
-		accepted.Load(), dropped.Load(), duplicates.Load(), failed.Load())
+	log.Printf("done: %d accepted, %d dropped (queue full), %d duplicate, %d too large, %d failed",
+		accepted.Load(), dropped.Load(), duplicates.Load(), oversize.Load(), failed.Load())
 	return nil
+}
+
+// ensureReady returns at once while the consumer is reachable, and otherwise
+// waits for it to come back for as long as the startup wait allows. It is
+// called before every upload, so a consumer that dies mid-run costs one failed
+// upload and then either resumes or ends the run with a clear reason.
+func ensureReady(conn *grpc.ClientConn, cfg config.Config) error {
+	if conn.GetState() == connectivity.Ready {
+		return nil
+	}
+	return waitReady(conn, cfg)
 }
 
 // waitReady blocks until the consumer is reachable or cfg.ConnectWait passes,
@@ -115,8 +139,9 @@ func listVideos(dir string) ([]string, error) {
 	return out, nil
 }
 
-// uploadFile streams one video to the consumer in chunks. WaitForReady makes a
-// brief connection drop wait for reconnection instead of failing the upload.
+// uploadFile streams one video to the consumer in chunks. It deliberately does
+// not use grpc.WaitForReady: a call on a dead connection should fail and be
+// reported, and ensureReady is what waits for the consumer to return.
 func uploadFile(ctx context.Context, client pb.MediaUploadClient, producerID int32, path string) (*pb.UploadStatus, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -124,7 +149,7 @@ func uploadFile(ctx context.Context, client pb.MediaUploadClient, producerID int
 	}
 	defer f.Close()
 
-	stream, err := client.UploadVideo(ctx, grpc.WaitForReady(true))
+	stream, err := client.UploadVideo(ctx)
 	if err != nil {
 		return nil, err
 	}
