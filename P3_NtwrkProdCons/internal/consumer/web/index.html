@@ -31,6 +31,14 @@ const player = document.getElementById('player');
 const note = document.getElementById('note');
 let lastKey = '';
 
+function bytes(n) {
+  if (!n) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return `${i === 0 ? n : n.toFixed(1)} ${u[i]}`;
+}
+
 function card(v) {
   const el = document.createElement('div');
   el.className = 'card';
@@ -69,7 +77,9 @@ async function refresh() {
     const r = await fetch('/api/videos');
     const d = await r.json();
     document.getElementById('stats').textContent =
-      `queue ${d.queue_len}/${d.queue_cap} · consumers ${d.consumers} · accepted ${d.accepted} · saved ${d.saved} · dropped ${d.dropped}`;
+      `queue ${d.queue_len}/${d.queue_cap} · consumers ${d.consumers} · accepted ${d.accepted}` +
+      ` · saved ${d.saved} · dropped ${d.dropped} · duplicates ${d.duplicates}` +
+      ` · compression saved ${bytes(d.bytes_saved)}`;
     // Only rebuild the grid when the set of videos/previews changes, so hovering isn't interrupted.
     const key = d.videos.map(v => v.name + '|' + (v.preview || '') + '|' + v.play).join(',');
     if (key !== lastKey) {
