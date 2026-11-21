@@ -28,9 +28,13 @@ $ErrorActionPreference = "Stop"
 # so the video still plays and still previews.
 function Add-RandomTrailer {
     param([string]$Path)
+    # Convert-Path first: .NET resolves a relative path against the process
+    # working directory, which Push-Location does NOT change. Without this the
+    # append goes looking in whatever directory PowerShell was started in.
+    $full = Convert-Path -LiteralPath $Path
     $pad = New-Object byte[] 16
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($pad)
-    $stream = [System.IO.File]::Open($Path, 'Append', 'Write')
+    $stream = [System.IO.File]::Open($full, 'Append', 'Write')
     try { $stream.Write($pad, 0, $pad.Length) } finally { $stream.Dispose() }
 }
 
