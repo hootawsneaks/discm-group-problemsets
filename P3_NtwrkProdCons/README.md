@@ -23,6 +23,15 @@ Everything is set in `config.json`; the only override is the `CONSUMER_ADDR` env
 
 The producer waits up to `connect_wait` for the consumer, so start order doesn't matter.
 
+## Preparing the videos
+
+Put a few sample videos in `samples/`, then run (Windows PowerShell):
+```powershell
+.\setup-videos.ps1               # creates videos/p1 ... videos/p<producers> from config.json
+.\setup-videos.ps1 -Count 3      # only 3 samples per folder
+```
+Each folder gets a copy of every sample, renamed `p<i>_<name>`. The script deletes and recreates `videos/` on every run.
+
 ## Run locally
 
 Run the consumer and producer in two separate terminals.
