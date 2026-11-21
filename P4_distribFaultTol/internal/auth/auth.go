@@ -98,6 +98,17 @@ func (s *server) Logout(ctx context.Context, _ *pb.Empty) (*pb.Empty, error) {
 	return &pb.Empty{}, nil
 }
 
+// SessionStatus tells another node whether a session is still live. The course
+// and grade nodes call this so a logout reaches them too. A logged-out token is
+// still a validly signed one, so the interceptor lets the call in and the
+// answer here is what matters.
+func (s *server) SessionStatus(_ context.Context, r *pb.SessionQuery) (*pb.SessionState, error) {
+	var sess Session
+	var known bool
+	s.db.Read(func(d *data) { sess, known = d.Sessions[r.GetJti()] })
+	return &pb.SessionState{Revoked: known && sess.LoggedOut, Known: known}, nil
+}
+
 func Run(cfg *config.Config) error {
 	db, err := store.Open(filepath.Join(cfg.DataDir, "auth.json"), seed)
 	if err != nil {
@@ -107,7 +118,10 @@ func Run(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret, pb.Auth_Login_FullMethodName)))
+	// The auth node is the source of truth for revocation, so it has no
+	// Revoker of its own; Login is the one method that needs no token.
+	g := grpc.NewServer(grpc.UnaryInterceptor(
+		authz.Interceptor(cfg.JWTSecret, nil, pb.Auth_Login_FullMethodName)))
 	pb.RegisterAuthServer(g, &server{cfg: cfg, db: db})
 	fmt.Println("auth node listening on", lis.Addr())
 	return g.Serve(lis)

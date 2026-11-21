@@ -123,7 +123,10 @@ func Run(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret)))
+	// Verify the JWT locally, and ask the auth node whether the session was
+	// logged out. If auth is unreachable the call is allowed through.
+	revoker := authz.RemoteRevoker(cfg.AuthAddr, cfg.RevocationTimeoutDur, cfg.RevocationCacheTTL)
+	g := grpc.NewServer(grpc.UnaryInterceptor(authz.Interceptor(cfg.JWTSecret, revoker)))
 	pb.RegisterGradeServer(g, &server{db: db})
 	fmt.Println("grade node listening on", lis.Addr())
 	return g.Serve(lis)
